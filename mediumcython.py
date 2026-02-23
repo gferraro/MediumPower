@@ -1,0 +1,2 @@
+import mediumpower
+mediumpower.main()
