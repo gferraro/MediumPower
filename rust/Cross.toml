@@ -1,0 +1,17 @@
+[target.aarch64-unknown-linux-gnu]
+dockerfile = "./Dockerfile.cross"
+
+[target.aarch64-unknown-linux-gnu.env]
+# OpenCV Location
+PKG_CONFIG_PATH = "/usr/lib/aarch64-linux-gnu/pkgconfig"
+PKG_CONFIG_ALLOW_CROSS = "1"
+OPENCV_PACKAGE_NAME = "opencv4"
+
+# Clang / Bindgen Location
+# These point to the symlinks and paths created in the Dockerfile
+CLANG_PATH = "/usr/bin/clang"
+OPENCV_CLANG_PATH = "/usr/bin/clang"
+LIBCLANG_PATH = "/usr/lib/llvm-10/lib"
+
+# Header search paths for ARM64
+BINDGEN_EXTRA_CLANG_ARGS = "--sysroot=/usr/aarch64-linux-gnu -I/usr/include/aarch64-linux-gnu"

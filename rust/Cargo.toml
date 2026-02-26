@@ -1,0 +1,40 @@
+[target.aarch664-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+ar = "aarch64-linux-gnu-ar"
+
+
+
+[package]
+name = "medium-power-tracking"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "medium-power-tracking"
+path = "src/main.rs"
+
+[dependencies]
+# OpenCV for image processing (GaussianBlur, threshold, morphology,
+# connected components). Requires system libopencv-dev to be installed.
+opencv = { version = "0.92", features = ["imgproc", "video", "photo", "clang-runtime"] }
+
+# gzip / raw-deflate decompression (matches Python's zlib.decompressobj)
+flate2 = "1.0"
+
+# YAML header parsing
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Random sampling for frame selection in classifier
+rand = "0.8"
+
+# Ergonomic error handling
+anyhow = "1.0"
+
+# JSON metadata for classifier model
+serde_json = "1.0"
+codec = {tag = "v0.0.9",  git = "https://github.com/TheCacophonyProject/cptv-tools" }
