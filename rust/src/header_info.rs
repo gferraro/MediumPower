@@ -45,7 +45,7 @@ struct RawHeader {
     #[serde(alias = "PixelBits")] pixel_bits: Option<u32>,
     #[serde(alias = "FrameSize")] frame_size: Option<u32>,
     #[serde(alias = "CameraSerial")] serial: Option<String>,
-    #[serde(alias = "Firmware")] firmware:  Option<serde_yaml::Value>,
+    #[serde(alias = "Firmware")] firmware:  Option<String>,
 }
 
 impl HeaderInfo {
@@ -59,14 +59,7 @@ impl HeaderInfo {
         let raw: RawHeader =
             serde_yaml::from_str(raw).context("parsing camera header YAML")?;
 
-        let firmware = raw
-            .firmware
-            .as_ref()
-            .map(|v| match v {
-                serde_yaml::Value::String(s) => s.clone(),
-                other => format!("{:?}", other),
-            })
-            .unwrap_or_default();
+        
 
         let mut h = Self {
             medium_power: false,
@@ -78,7 +71,7 @@ impl HeaderInfo {
             frame_size: raw.frame_size.unwrap_or(0),
             pixel_bits: raw.pixel_bits.unwrap_or(0),
             serial:     raw.serial.unwrap_or_else(|| "".to_string()),
-            firmware,
+            firmware: raw.firmware.unwrap_or_else(|| "".to_string())
         };
 
         // Derive missing field from the other.
