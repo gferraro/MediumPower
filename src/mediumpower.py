@@ -20,7 +20,6 @@ SOCKET_NAME = "/var/run/lepton-frames"
 start = time.time()
 
 
-
 def parse_cptv(cptv_file, frame_queue):
     import cv2
     from cptv_rs_python_bindings import CptvReader
@@ -59,7 +58,7 @@ def main():
     processor = get_processor(frame_queue)
     processor.start()
 
-    test = True
+    test = False
     if test:
         print("Parsing test.cptv")
         parse_cptv("test.cptv", frame_queue)
@@ -77,6 +76,7 @@ def main():
     sock.bind(SOCKET_NAME)
     sock.settimeout(3 * 60)  # 3 minutes
     sock.listen(1)
+    global start
     while True:
         logging.info("waiting for a connection %s", time.time() - start)
         try:
@@ -84,15 +84,13 @@ def main():
             connected = True
             logging.info("connection from %s", client_address)
             # log_event("camera-connected", {"type": "thermal"})
-            handle_connection(
-                connection, config, thermal_config, None, None, frame_queue, processor
-            )
+            medium_power(connection, frame_queue, processor)
         except socket.timeout:
             print("TIMEOUT")
             return
 
         except Exception as ex:
-            print("Error with connection", ex)
+            logging.error("Error with connection", exc_info=True)
         finally:
             # Clean up the connection
             try:
@@ -100,6 +98,7 @@ def main():
             except:
                 pass
         connected = False
+        start = time.time()
 
 
 def handle_headers(connection):
@@ -139,123 +138,128 @@ def get_processor(process_queue):
     return p_processor
 
 
-def medium_power(
-    thermal_config, config, connection, headers, extra_b, frame_queue, processor
-):
+def medium_power(connection, frame_queue, processor):
     from cptv_rs_python_bindings import CptvStreamReader
     import zlib
     import numpy as np
+    from cptv import Frame
 
+
+    headers, extra_b = handle_headers(connection)
     logging.info(
         "Got header running medium power extra size %s: %s", len(extra_b), extra_b[:50]
     )
-
-    reader = CptvStreamReader()
-    decompressor = zlib.decompressobj(wbits=-zlib.MAX_WBITS)
-    u8_data = None
-    frame_i = 0
-    read_header = False
-    connection.settimeout(5)
-    data = b""
-    finished = False
     logging.info(
         "Headers frame size is %s extra b size is %s", headers.frame_size, len(extra_b)
     )
-    from cptv import Frame
+    logging.info("Got headers %s", headers)
+    stream_i = 0
+    connection.settimeout(5)
 
-    # f = open("/home/pi/streamed/raw.gz", "wb")
-    while not finished:
-        byte_data = b""
-        try:
-            if extra_b is not None:
-                byte_data = extra_b + connection.recv(headers.frame_size - len(extra_b))
-                extra_b = None
-            else:
-                byte_data = connection.recv(headers.frame_size)
-        except TimeoutError as e:
-            logging.info("TImed out")
-            time.sleep(1)
-            # continue
-        except:
-            logging.error("No data resetting data", exc_info=True)
+    while True:
+        
+        logging.info(f"Writing raw bytes to /home/pi/streamed/raw{stream_i}.gz")
+        reader = CptvStreamReader()
+        decompressor = zlib.decompressobj(wbits=-zlib.MAX_WBITS)
+        u8_data = None
+        frame_i = 0
+        read_header = False
+        data = b""
+        finished = False
+        f = open(f"/home/pi/streamed/raw{stream_i}.gz", "wb")
+
+        stream_i+=1
+        while not finished:
             byte_data = b""
-            data = b""
-            time.sleep(1)
-            continue
+            try:
+                if extra_b is not None:
+                    byte_data = extra_b + connection.recv(
+                        headers.frame_size - len(extra_b)
+                    )
+                    extra_b = None
+                else:
+                    byte_data = connection.recv(headers.frame_size)
+            except TimeoutError as e:
+                logging.info("TImed out")
+                time.sleep(1)
+                # continue
+            except:
+                logging.error("No data resetting data", exc_info=True)
+                byte_data = b""
+                data = b""
+                time.sleep(1)
+                continue
 
-        if len(byte_data) > 0:
-            clear_index = byte_data.find(b"clear")
-            if clear_index > -1:
-                byte_data = byte_data[:clear_index]
-                # f.write(byte_data)
+            if len(byte_data) > 0:
+                clear_index = byte_data.find(b"clear")
+                if clear_index > -1:
+                    byte_data = byte_data[:clear_index]
+                    f.write(byte_data)
 
-                logging.info("Received clear finished file")
-                finished = True
-                frame_queue.put(STOP_SIGNAL)
+                    logging.info("Received clear finished file")
+                    finished = True
+                    frame_queue.put(CLEAR_SIGNAL)
 
-                # f.close()
-            else:
-                # f.write(byte_data)
-                data = data + byte_data
-
-        # logging.info("Have byte data to decompress: %s bytes", len(data))
-        try:
-            data, decompressed_chunk, read_header = decompress(
-                decompressor, data, read_header
-            )
-        except:
-            logging.error("Error decompressing ", exc_info=True)
-            time.sleep(1)
-            if len(data) > 40000:
-                logging.info("Failed")
-                # return
-            continue
-
-        # logging.info(
-        #     "Have decompressed %s left over data is %s",
-        #     len(decompressed_chunk),
-        #     len(data),
-        # )
-        if len(decompressed_chunk) == 0:
-            continue
-
-        if u8_data is None:
-            u8_data = np.frombuffer(decompressed_chunk, dtype=np.uint8)
-        else:
-            u8_data = np.concatenate(
-                (u8_data, np.frombuffer(decompressed_chunk, dtype=np.uint8)), axis=0
-            )
-
-        # logging.info("Loading frames wtih %s", len(u8_data))
-        while True:
-            result = reader.next_frame_from_data(u8_data)
-            if result is not None:
-                frame, used = result
-                u8_data = u8_data[used:]
-                py_frame = Frame(
-                    frame.pix,
-                    frame.time_on,
-                    frame.last_ffc_time,
-                    frame.temp_c,
-                    frame.last_ffc_temp_c,
+                    f.close()
+                else:
+                    f.write(byte_data)
+                    logging.info("Adding new data %s to old data %s", len(byte_data), len(data))
+                    data = data + byte_data
+            # logging.info("Have byte data to decompress: %s bytes", len(data))
+            try:
+                logging.info("Decompressing %s", len(data))
+                data, decompressed_chunk, read_header = decompress(
+                    decompressor, data, read_header
                 )
-                frame_queue.put((py_frame, time.time()))
+            except:
+                logging.error("Error decompressing ", exc_info=True)
+                time.sleep(1)
+                if len(data) > 40000:
+                    logging.info("Failed")
+                    # return
+                continue
 
-                # logging.info("Loaded a frame from gz data")
-                frame_i += 1
-                # normed, _ = normalize(frame.pix, new_max=255)
-                # normed = np.uint8(normed)
-                # cv2.imwrite(f"/home/pi/streamed/frame{frame_i}.png", normed)
+            # logging.info(
+            #     "Have decompressed %s left over data is %s",
+            #     len(decompressed_chunk),
+            #     len(data),
+            # )
+            if len(decompressed_chunk) == 0:
+                continue
+
+            if u8_data is None:
+                u8_data = np.frombuffer(decompressed_chunk, dtype=np.uint8)
             else:
-                # need more data
-                # logging.info(
-                #     "Have decompress data of: %s but am unable to parse a valid frame",
-                #     len(u8_data),
-                # )
-                if len(u8_data) > 40000:
-                    logging.info("Exiting have error")
-                #   return
-                break
+                # logging.info("Adding more u8 %s to existing %s", len(decompressed_chunk), len(u8_data))
+                u8_data = np.concatenate(
+                    (u8_data, np.frombuffer(decompressed_chunk, dtype=np.uint8)), axis=0
+                )
+
+            # logging.info("Loading frames wtih %s", len(u8_data))
+            while True:
+                result = reader.next_frame_from_data(u8_data)
+                if result is not None:
+                    frame, used = result
+                    u8_data = u8_data[used:]
+                    py_frame = Frame(
+                        frame.pix,
+                        frame.time_on,
+                        frame.last_ffc_time,
+                        frame.temp_c,
+                        frame.last_ffc_temp_c,
+                    )
+                    frame_queue.put((py_frame, time.time()))
+                    frame_i += 1
+
+                else:
+                    if len(u8_data) > 40000:
+                        logging.info("Exiting have error")
+                    #   return
+                    break
+        logging.info("Finished processing left over bytes are %s",len(u8_data))
+    logging.info("Stopping processing")
+    frame_queue.put(STOP_SIGNAL)
+
     processor.join()
 
 
@@ -268,74 +272,7 @@ def handle_connection(
     frame_queue,
     processor,
 ):
-    headers, extra_b = handle_headers(connection)
-    logging.info("Got headers %s", headers)
-
-    return medium_power(
-        thermal_config, config, connection, headers, extra_b, frame_queue, processor
-    )
-
-
-# def new_clip(track_extractor, headers, config, thermal_config, frame):
-#     from .cptvmotiondetector import CPTVMotionDetector
-
-#     from track.clip import Clip
-#     from datetime import datetime
-
-#     tracking_config = config.tracking.get("thermal")
-
-#     motion_detector = CPTVMotionDetector(
-#         thermal_config,
-#         tracking_config.motion.dynamic_thresh,
-#         headers,
-#         detect_after=0,
-#     )
-
-#     clip = Clip(
-#         tracking_config,
-#         "stream",
-#         model=headers.model,
-#         type="thermal",
-#         calc_stats=False,
-#         fps=headers.fps,
-#     )
-#     clip.video_start_time = datetime.now()
-
-#     clip.num_preview_frames = 0
-#     # self.next_classify_frame = 0
-#     next_fp_classification_frame = 0
-#     clip.set_res(*frame.pix.shape)
-#     clip.set_frame_buffer(
-#         tracking_config.high_quality_optical_flow,
-#         config.classify.cache_to_disk,
-#         config.use_opt_flow,
-#         keep_frames=True,
-#         max_frames=50,
-#     )
-#     motion_detector._background._background = frame.pix
-
-#     clip.update_background(motion_detector.background)
-#     clip._background_calculated()
-
-#     track_extractor.start_tracking(
-#         clip, [frame], track_frames=True, background_alg=motion_detector._background
-#     )
-#     return clip, motion_detector
-
-
-# def init_trackers(config):
-#     from track.cliptrackextractor import ClipTrackExtractor
-
-#     track_extractor = ClipTrackExtractor(
-#         config.tracking,
-#         config.use_opt_flow,
-#         config.classify.cache_to_disk,
-#         keep_frames=False,
-#         calc_stats=False,
-#         update_background=False,
-#         from_pi=True,
-#     )
-#     return track_extractor
+    return medium_power(thermal_config, config, connection, frame_queue, processor)
 
 
 import zlib
@@ -461,6 +398,8 @@ class HeaderInfo:
         return attr.asdict(self)
 
 
+CLEAR_SIGNAL = "clear"
+
 STOP_SIGNAL = "stop"
 SKIP_SIGNAL = "skip"
 
@@ -490,7 +429,7 @@ def identify_last_frame(clip, load_model_thread):
         logging.info("Waiting for model thread to finish")
         load_model_thread.join()
     track = active_tracks[0]
-    print("Track is ",track)
+    print("Track is ", track)
     start = time.time()
     pred_result = classifier.predict_recent_frames(
         clip,
@@ -523,7 +462,9 @@ def load_model():
 
     from pathlib import Path
 
-    classifier = LiteInterpreter(Path("./tflite/converted_model.tflite"), False, True)
+    classifier = LiteInterpreter(
+        Path("/home/pi/tflite/converted_model.tflite"), False, True
+    )
     logging.info("Loaded tflite model")
 
 
@@ -534,24 +475,32 @@ def run_classifier(frame_queue):
     frame_i = 0
     predict_every = 20
     try:
-        logging.info("Loading clip")
-
-        track_extractor, clip = new_clip()
-        logging.info("Waiting for frames")
         while True:
-            frame = frame_queue.get()
-            if isinstance(frame, str):
-                if frame == STOP_SIGNAL:
-                    logging.info("PiClassifier received stop signal")
-            else:
-                frame, time_sent = frame
-                track_extractor.process_frame(clip, frame)
-                frame_i += 1
-                if frame_i % predict_every == 0:
-                    logging.info(
-                        "%s Predicting behind by %s ", frame_i, time.time() - time_sent
-                    )
-                    identify_last_frame(clip, load_model_thread)
+            logging.info("Making a new clip")
+
+            track_extractor, clip = new_clip()
+            logging.info("Waiting for frames")
+            while True:
+                frame = frame_queue.get()
+                if isinstance(frame, str):
+                    if frame == CLEAR_SIGNAL:
+                        logging.info(
+                            "PiClassifier received clear signal will start a new clip"
+                        )
+                    elif frame == STOP_SIGNAL:
+                        logging.info("PiClassifier received stop signal")
+                        return
+                else:
+                    frame, time_sent = frame
+                    track_extractor.process_frame(clip, frame)
+                    frame_i += 1
+                    if frame_i % predict_every == 0:
+                        logging.info(
+                            "%s Predicting behind by %s ",
+                            frame_i,
+                            time.time() - time_sent,
+                        )
+                        identify_last_frame(clip, load_model_thread)
     except:
         logging.error("Error running classifier restarting ..", exc_info=True)
 
@@ -631,6 +580,8 @@ def new_clip():
 
 
 class BasicClip:
+    ID = 1
+
     def __init__(self):
         # do something
         self.res_x = 160
@@ -644,9 +595,11 @@ class BasicClip:
         self.region_history = []
         self.crop_rectangle = None
         self.frames_per_second = 9
+        self.id = BasicClip.ID
+        BasicClip.ID += 1
 
     def get_id(self):
-        return 1
+        return self.id
 
     def add_frame(self, thermal, filtered, mask=None, ffc_affected=False):
         self.current_frame += 1
@@ -659,8 +612,9 @@ class BasicClip:
 
         return f
 
-    def get_frame(self,frame_number):
+    def get_frame(self, frame_number):
         return self.frame_buffer.get_frame(frame_number)
+
     def _add_active_track(self, track):
         self.active_tracks.add(track)
         self.tracks.append(track)
@@ -703,8 +657,6 @@ class FrameBuffer:
         self.frames = []
         self.frames_by_frame_number = {}
 
-
-
     def get_frame(self, frame_number):
         frame = None
         if frame_number in self.frames_by_frame_number:
@@ -717,7 +669,8 @@ class FrameBuffer:
             frame == None or frame.frame_number == frame_number
         ), f"{frame.frame_number} is not the same as requested {frame_number}"
         return frame
-    
+
+
 @attr.s(slots=True, eq=False)
 class Frame:
     thermal = attr.ib()
@@ -776,6 +729,7 @@ class Frame:
             return self.thermal
         return self.filtered
 
+
 class LiteInterpreter:
     TYPE = "TFLite"
 
@@ -817,21 +771,20 @@ class LiteInterpreter:
         # self.preprocess_fn = self.get_preprocess_fn()
         # inc3_preprocess
 
-
     # use when predictin as tracks are being tracked i.e not finished yet
     def predict_recent_frames(self, clip, track):
         samples = frame_samples(clip, track)
         frames, preprocessed, mass = preprocess_segments(clip, track, samples)
         if preprocessed is None or len(preprocessed) == 0:
             return None
-        
+
         import numpy as np
-        preprocessed =np.expand_dims(preprocessed, axis=0)
-        logging.info("Predicting on %s %s",frames,preprocessed.shape)
+
+        preprocessed = np.expand_dims(preprocessed, axis=0)
+        logging.info("Predicting on %s %s", frames, preprocessed.shape)
 
         prediction = self.predict(preprocessed)
         return prediction, frames, mass
-
 
     def predict(self, input_x):
         import numpy as np
@@ -888,9 +841,10 @@ def frame_samples(clip, track, num_frames=25):
     )
     return samples
 
-def preprocess_segments( clip, track, samples):
+
+def preprocess_segments(clip, track, samples):
     import numpy as np
-    from tools import preprocess_movement,normalize
+    from tools import preprocess_movement, normalize
 
     frame_temp_medians = {}
     clip_thermals_at_zero = True
@@ -930,7 +884,7 @@ def preprocess_segments( clip, track, samples):
         )
         frame.thermal, _ = normalize(frame.thermal, new_max=255)
         preprocessed.append(frame)
-    preprocessed = preprocess_movement( preprocessed)
+    preprocessed = preprocess_movement(preprocessed)
 
     # import cv2
     # display = np.uint8(preprocessed[:,:,2])
@@ -941,7 +895,8 @@ def preprocess_segments( clip, track, samples):
     preprocessed = np.array(preprocessed)
     return [region.frame_number for region in samples], preprocessed, mass
 
-def get_limits( clip, track):
+
+def get_limits(clip, track):
     min_diff = None
     max_diff = 0
     import numpy as np
@@ -961,7 +916,6 @@ def get_limits( clip, track):
         if region.blank or region.width <= 0 or region.height <= 0 or f is None:
             continue
 
-
         diff_frame = region.subimage(f.filtered)
 
         new_max = np.amax(diff_frame)
@@ -973,7 +927,7 @@ def get_limits( clip, track):
 
     filtered_norm_limits = (min_diff, max_diff)
     return filtered_norm_limits
+
+
 if __name__ == "__main__":
     main()
-
-

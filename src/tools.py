@@ -50,11 +50,10 @@ def detect_objects(image, otsus=False, threshold=30, kernel=(15, 15)):
     return cv2.connectedComponentsWithStats(image)
 
 
-
-
 def resize_cv(image, dim, interpolation, extra_h=0, extra_v=0):
     import cv2
     import numpy as np
+
     return cv2.resize(
         np.float32(image),
         dsize=(dim[0] + extra_h, dim[1] + extra_v),
@@ -77,6 +76,7 @@ def resize_and_pad(
 ):
     import cv2
     import numpy as np
+
     if interpolation is None:
         interpolation = cv2.INTER_LINEAR
 
@@ -152,7 +152,7 @@ def preprocess_movement(
     frame_types = {}
     data = []
     frame_samples = list(np.arange(len(preprocess_frames)))
-    print("Samples are ",len(preprocess_frames))
+    print("Samples are ", len(preprocess_frames))
     if len(preprocess_frames) < frames_per_row * 5:
         extra_samples = np.random.choice(
             frame_samples, frames_per_row * 5 - len(preprocess_frames)
