@@ -86,11 +86,15 @@ def main():
             # log_event("camera-connected", {"type": "thermal"})
             medium_power(connection, frame_queue, processor)
         except socket.timeout:
+            #
             print("TIMEOUT")
-            return
-
+            break
+        except KeyboardInterrupt:
+            logging.info("\nCtrl+C pressed. Exiting gracefully.")
+            break
         except Exception as ex:
             logging.error("Error with connection", exc_info=True)
+
         finally:
             # Clean up the connection
             try:
@@ -99,6 +103,8 @@ def main():
                 pass
         connected = False
         start = time.time()
+    frame_queue.put(STOP_SIGNAL)
+    processor.join()
 
 
 def handle_headers(connection):
@@ -144,7 +150,6 @@ def medium_power(connection, frame_queue, processor):
     import numpy as np
     from cptv import Frame
 
-
     headers, extra_b = handle_headers(connection)
     logging.info(
         "Got header running medium power extra size %s: %s", len(extra_b), extra_b[:50]
@@ -157,36 +162,38 @@ def medium_power(connection, frame_queue, processor):
     connection.settimeout(5)
 
     while True:
-        
-        logging.info(f"Writing raw bytes to /home/pi/streamed/raw{stream_i}.gz")
+
         reader = CptvStreamReader()
         decompressor = zlib.decompressobj(wbits=-zlib.MAX_WBITS)
+        recording = False
         u8_data = None
         frame_i = 0
         read_header = False
         data = b""
         finished = False
-        f = open(f"/home/pi/streamed/raw{stream_i}.gz", "wb")
 
-        stream_i+=1
+        logging.info(f"Writing raw bytes to /home/pi/streamed/raw{stream_i}.gz")
+        f = open(f"/home/pi/streamed/raw{stream_i}.gz", "wb")
+        byte_data = b""
+        if extra_b is not None:
+            data = extra_b
+
+        stream_i += 1
         while not finished:
-            byte_data = b""
             try:
-                if extra_b is not None:
-                    byte_data = extra_b + connection.recv(
-                        headers.frame_size - len(extra_b)
-                    )
-                    extra_b = None
-                else:
-                    byte_data = connection.recv(headers.frame_size)
-            except TimeoutError as e:
-                logging.info("TImed out")
-                time.sleep(1)
-                # continue
+                byte_data = connection.recv(headers.frame_size)
+                if len(byte_data) == 0:
+                    # disconnected from socket
+                    logging.info("Disconnected from socket")
+                    if recording:
+                        logging.error("Mid recording failed to receive more data")
+                        frame_queue.put(CLEAR_SIGNAL)
+                        return
             except:
-                logging.error("No data resetting data", exc_info=True)
-                byte_data = b""
-                data = b""
+                if recording:
+                    logging.error("Mid recording failed to receive more data")
+                    frame_queue.put(CLEAR_SIGNAL)
+                    break
                 time.sleep(1)
                 continue
 
@@ -203,9 +210,15 @@ def medium_power(connection, frame_queue, processor):
                     f.close()
                 else:
                     f.write(byte_data)
-                    logging.info("Adding new data %s to old data %s", len(byte_data), len(data))
+                    logging.info(
+                        "Adding new data %s to old data %s", len(byte_data), len(data)
+                    )
                     data = data + byte_data
-            # logging.info("Have byte data to decompress: %s bytes", len(data))
+
+            if len(data) == 0:
+                time.sleep(1)
+                continue
+
             try:
                 logging.info("Decompressing %s", len(data))
                 data, decompressed_chunk, read_header = decompress(
@@ -214,19 +227,11 @@ def medium_power(connection, frame_queue, processor):
             except:
                 logging.error("Error decompressing ", exc_info=True)
                 time.sleep(1)
-                if len(data) > 40000:
-                    logging.info("Failed")
-                    # return
                 continue
 
-            # logging.info(
-            #     "Have decompressed %s left over data is %s",
-            #     len(decompressed_chunk),
-            #     len(data),
-            # )
             if len(decompressed_chunk) == 0:
                 continue
-
+            recording = True
             if u8_data is None:
                 u8_data = np.frombuffer(decompressed_chunk, dtype=np.uint8)
             else:
@@ -252,27 +257,15 @@ def medium_power(connection, frame_queue, processor):
                     frame_i += 1
 
                 else:
-                    if len(u8_data) > 40000:
-                        logging.info("Exiting have error")
-                    #   return
+                    logging.info(
+                        "Have %s bytes but need more to decompress a frame",
+                        len(u8_data),
+                    )
                     break
-        logging.info("Finished processing left over bytes are %s",len(u8_data))
-    logging.info("Stopping processing")
-    frame_queue.put(STOP_SIGNAL)
-
-    processor.join()
-
-
-def handle_connection(
-    connection,
-    config,
-    thermal_config,
-    process_queue,
-    track_extractor,
-    frame_queue,
-    processor,
-):
-    return medium_power(thermal_config, config, connection, frame_queue, processor)
+        logging.info(
+            "Finished processing left over bytes are %s",
+            "None" if u8_data is None else len(u8_data),
+        )
 
 
 import zlib
