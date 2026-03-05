@@ -211,7 +211,7 @@ def medium_power(connection, frame_queue, processor):
                     f.close()
                 else:
                     f.write(byte_data)
-                    logging.info(
+                    logging.debug(
                         "Adding new data %s to old data %s", len(byte_data), len(data)
                     )
                     data = data + byte_data
@@ -221,7 +221,7 @@ def medium_power(connection, frame_queue, processor):
                 continue
 
             try:
-                logging.info("Decompressing %s", len(data))
+                logging.debug("Decompressing %s", len(data))
                 data, decompressed_chunk, read_header = decompress(
                     decompressor, data, read_header
                 )
@@ -258,7 +258,7 @@ def medium_power(connection, frame_queue, processor):
                     frame_i += 1
 
                 else:
-                    logging.info(
+                    logging.debug(
                         "Have %s bytes but need more to decompress a frame",
                         len(u8_data),
                     )
@@ -410,7 +410,7 @@ def get_active_tracks(clip):
 last_frame_predicted = None
 
 
-def identify_last_frame(monitored_tracks, clip, load_model_thread, dbus_service):
+def identify_last_frame(monitored_tracks, clip, load_model_thread):
     import numpy as np
     from trackprediction import TrackPrediction
 
@@ -433,7 +433,7 @@ def identify_last_frame(monitored_tracks, clip, load_model_thread, dbus_service)
         track,
     )
     if pred_result is not None:
-        track_pred = monitored_tracks.getdefault(track.id, TrackPrediction(track.id))
+        track_pred = monitored_tracks.setdefault(track.id, TrackPrediction(track.id))
         prediction, frames, _ = pred_result
         track_pred.classified_frame(frames, prediction[0])
 
@@ -442,7 +442,7 @@ def identify_last_frame(monitored_tracks, clip, load_model_thread, dbus_service)
             "Track %s is predicted as %s conf %s took %s track frames %s",
             track,
             classifier.labels[track_pred.best_label_index],
-            round(track_pred.normalized_best_score * 100),
+            round(track_pred.normalized_best_score() * 100),
             time.time() - start,
             len(track),
         )
@@ -455,7 +455,7 @@ def identify_last_frame(monitored_tracks, clip, load_model_thread, dbus_service)
         #         track_pred.normalized_score,
         #         track.bounds_history[-1],
         #         True,
-        #         track_pred.last_prediction_frame,
+        #         track_pred.last_frame_classified,
         #         predicted_as,
         #         classifier.id,
         #     )
@@ -475,7 +475,7 @@ def load_model():
 
     try:
         classifier = LiteInterpreter(
-            Path("/home/pi/tflite/converted_model.tflite"), False, False
+            Path("/home/pi/tflite/converted_model.tflite"), 1, False, False
         )
         # this way metadata is loaded
         classifier.load_model()
@@ -540,10 +540,10 @@ def run_classifier(frame_queue):
                                 dbus_service.tracking(
                                     clip.id,
                                     track.id,
-                                    track_pred.normalized_score,
+                                    track_pred.normalized_score(),
                                     track.bounds_history[-1],
                                     False,
-                                    track_pred.last_prediction_frame,
+                                    track_pred.last_frame_classified,
                                     predicted_as,
                                     classifier.id,
                                 )
@@ -558,16 +558,20 @@ def run_classifier(frame_queue):
                         identify_last_frame(monitored_tracks, clip, load_model_thread)
 
                 if dbus_service is not None:
-                    for track_pred in monitored_tracks.values():
+                    for track_id, track_pred in monitored_tracks.items():
                         predicted_as = classifier.labels[track_pred.best_label_index]
-
+                        track = [
+                            track
+                            for track in clip.active_tracks
+                            if track.id == track_id
+                        ][0]
                         dbus_service.tracking(
                             clip.id,
                             track.id,
-                            track_pred.normalized_score,
+                            track_pred.normalized_score(),
                             track.bounds_history[-1],
                             True,
-                            track_pred.last_prediction_frame,
+                            track_pred.last_frame_classified,
                             predicted_as,
                             classifier.id,
                         )

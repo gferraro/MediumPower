@@ -449,6 +449,10 @@ class Track:
         self.thumb_info = None
         self.score = None
 
+    @property
+    def id(self):
+        return self._id
+
     def get_tracker(self, tracking_config):
         tracker = tracking_config.tracker
         if tracker == "RegionTracker":

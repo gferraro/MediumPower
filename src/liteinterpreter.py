@@ -4,10 +4,12 @@ import logging
 class LiteInterpreter:
     TYPE = "TFLite"
 
-    def __init__(self, model_file, run_over_network=False, load_model=True):
+    def __init__(self, model_file, id, run_over_network=False, load_model=True):
         self.model_file = model_file
         self.run_over_network = run_over_network
         self.load_json()
+        self.id = id
+
         if run_over_network or not load_model:
             return
         self.load_model()
@@ -52,7 +54,7 @@ class LiteInterpreter:
         import numpy as np
 
         preprocessed = np.expand_dims(preprocessed, axis=0)
-        logging.info("Predicting on %s %s", frames, preprocessed.shape)
+        logging.debug("Predicting on %s %s", frames, preprocessed.shape)
 
         prediction = self.predict(preprocessed)
         return prediction, frames, mass
