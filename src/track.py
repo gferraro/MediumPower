@@ -556,6 +556,20 @@ class Track:
     def predicted_velocity(self):
         return self.tracker.predicted_velocity()
 
+    @classmethod
+    def from_region(cls, clip, region, tracker_version=None, tracking_config=None):
+        track = cls(
+            clip.get_id(),
+            fps=clip.frames_per_second,
+            tracker_version=tracker_version,
+            crop_rectangle=clip.crop_rectangle,
+            tracking_config=tracking_config,
+        )
+        track.start_frame = region.frame_number
+        track.start_s = region.frame_number / float(clip.frames_per_second)
+        track.add_region(region)
+        return track
+
     @property
     def end_frame(self):
         if len(self.bounds_history) == 0:
