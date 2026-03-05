@@ -7,6 +7,7 @@ import logging
 import sys
 import multiprocessing
 import threading
+from liteinterpreter import LiteInterpreter
 
 # from config.thermalconfig import ThermalConfig
 # from config.config import Config
@@ -409,8 +410,9 @@ def get_active_tracks(clip):
 last_frame_predicted = None
 
 
-def identify_last_frame(clip, load_model_thread):
+def identify_last_frame(monitored_tracks, clip, load_model_thread, dbus_service):
     import numpy as np
+    from trackprediction import TrackPrediction
 
     global last_frame_predicted
 
@@ -421,29 +423,45 @@ def identify_last_frame(clip, load_model_thread):
     if load_model_thread.is_alive():
         logging.info("Waiting for model thread to finish")
         load_model_thread.join()
+    if classifier is None:
+        logging.info("Not classifying as couldn't load model")
+        return
     track = active_tracks[0]
-    print("Track is ", track)
     start = time.time()
     pred_result = classifier.predict_recent_frames(
         clip,
         track,
     )
     if pred_result is not None:
-        prediction, frames, mass = pred_result
-        last_frame_predicted = frames[-1]
-        prediction = prediction[0]
-        # logging.info("Pred result is %s",prediction.shape)
-        max_i = np.argmax(prediction)
+        track_pred = monitored_tracks.getdefault(track.id, TrackPrediction(track.id))
+        prediction, frames, _ = pred_result
+        track_pred.classified_frame(frames, prediction[0])
+
+        # predicted_as= classifier.labels[track_pred.best_label_index]
         logging.info(
             "Track %s is predicted as %s conf %s took %s track frames %s",
             track,
-            classifier.labels[max_i],
-            round(prediction[max_i] * 100),
+            classifier.labels[track_pred.best_label_index],
+            round(track_pred.normalized_best_score * 100),
             time.time() - start,
             len(track),
         )
+
+        # do this in main loop
+        # if dbus_service is not None:
+        #     dbus_service.tracking(
+        #         clip.id,
+        #         track.id,
+        #         track_pred.normalized_score,
+        #         track.bounds_history[-1],
+        #         True,
+        #         track_pred.last_prediction_frame,
+        #         predicted_as,
+        #         classifier.id,
+        #     )
     else:
         logging.error("Pred is none for %s", track)
+    return monitored_tracks
 
 
 classifier = None
@@ -455,18 +473,30 @@ def load_model():
 
     from pathlib import Path
 
-    classifier = LiteInterpreter(
-        Path("/home/pi/tflite/converted_model.tflite"), False, True
-    )
-    logging.info("Loaded tflite model")
+    try:
+        classifier = LiteInterpreter(
+            Path("/home/pi/tflite/converted_model.tflite"), False, False
+        )
+        # this way metadata is loaded
+        classifier.load_model()
+        logging.info("Loaded tflite model")
+
+    except:
+        logging.error("Could not load model", exc_info=True)
 
 
 def run_classifier(frame_queue):
+    from dbusservice import DbusService
+
     load_model_thread = threading.Thread(target=load_model)
     load_model_thread.start()
-
+    # dont think we need this
+    headers = {}
     frame_i = 0
     predict_every = 20
+    # this might need to be stored and queryable as not all services that want these may be running yet
+    dbus_service = None
+    monitored_tracks = {}
     try:
         while True:
             logging.info("Making a new clip")
@@ -480,20 +510,68 @@ def run_classifier(frame_queue):
                         logging.info(
                             "PiClassifier received clear signal will start a new clip"
                         )
+                        dbus_service.recording(False)
+
                     elif frame == STOP_SIGNAL:
                         logging.info("PiClassifier received stop signal")
                         return
                 else:
                     frame, time_sent = frame
-                    track_extractor.process_frame(clip, frame)
+                    stale_tracks = track_extractor.process_frame(clip, frame)
+                    if dbus_service is None and classifier is not None:
+                        try:
+                            dbus_service = DbusService(headers, classifier.labels)
+                            dbus_service.recording(True)
+                        except:
+                            logging.error(
+                                "Couldnt load dbus will try again ", exc_info=True
+                            )
                     frame_i += 1
+
+                    # remove stale tracks
+                    if len(monitored_tracks) > 0:
+                        for track in stale_tracks:
+                            if track.id in monitored_tracks:
+                                track_pred = monitored_tracks[track.id]
+                                predicted_as = classifier.labels[
+                                    track_pred.best_label_index
+                                ]
+
+                                dbus_service.tracking(
+                                    clip.id,
+                                    track.id,
+                                    track_pred.normalized_score,
+                                    track.bounds_history[-1],
+                                    False,
+                                    track_pred.last_prediction_frame,
+                                    predicted_as,
+                                    classifier.id,
+                                )
+                                del monitored_tracks[track.id]
+
                     if frame_i % predict_every == 0:
                         logging.info(
                             "%s Predicting behind by %s ",
                             frame_i,
                             time.time() - time_sent,
                         )
-                        identify_last_frame(clip, load_model_thread)
+                        identify_last_frame(monitored_tracks, clip, load_model_thread)
+
+                if dbus_service is not None:
+                    for track_pred in monitored_tracks.values():
+                        predicted_as = classifier.labels[track_pred.best_label_index]
+
+                        dbus_service.tracking(
+                            clip.id,
+                            track.id,
+                            track_pred.normalized_score,
+                            track.bounds_history[-1],
+                            True,
+                            track_pred.last_prediction_frame,
+                            predicted_as,
+                            classifier.id,
+                        )
+
     except:
         logging.error("Error running classifier restarting ..", exc_info=True)
 
@@ -721,205 +799,6 @@ class Frame:
         if channel == 0:
             return self.thermal
         return self.filtered
-
-
-class LiteInterpreter:
-    TYPE = "TFLite"
-
-    def __init__(self, model_file, run_over_network=False, load_model=True):
-        self.model_file = model_file
-        self.run_over_network = run_over_network
-        self.load_json()
-        if run_over_network or not load_model:
-            return
-        self.load_model()
-
-    def load_json(self):
-        """Loads model and parameters from file."""
-        from pathlib import Path
-        import json
-
-        filename = Path(self.model_file)
-        filename = filename.with_suffix(".json")
-
-        logging.info("Loading metadata from %s", filename)
-        metadata = json.load(open(filename, "r"))
-        self.version = metadata.get("version", None)
-        self.labels = metadata["labels"]
-        self.mapped_labels = metadata.get("mapped_labels")
-
-    def load_model(self):
-        from ai_edge_litert.interpreter import Interpreter
-
-        model_name = self.model_file.with_suffix(".tflite")
-        self.interpreter = Interpreter(str(model_name))
-
-        self.interpreter.allocate_tensors()  # Needed before execution!
-
-        self.output = self.interpreter.get_output_details()[
-            0
-        ]  # Model has single output.
-
-        self.input = self.interpreter.get_input_details()[0]  # Model has single input.
-        # self.preprocess_fn = self.get_preprocess_fn()
-        # inc3_preprocess
-
-    # use when predictin as tracks are being tracked i.e not finished yet
-    def predict_recent_frames(self, clip, track):
-        samples = frame_samples(clip, track)
-        frames, preprocessed, mass = preprocess_segments(clip, track, samples)
-        if preprocessed is None or len(preprocessed) == 0:
-            return None
-
-        import numpy as np
-
-        preprocessed = np.expand_dims(preprocessed, axis=0)
-        logging.info("Predicting on %s %s", frames, preprocessed.shape)
-
-        prediction = self.predict(preprocessed)
-        return prediction, frames, mass
-
-    def predict(self, input_x):
-        import numpy as np
-
-        if self.run_over_network:
-            return self.predict_over_network(np.float32(input_x))
-        input_x = np.float32(input_x)
-        preds = []
-        # only works on input of 1
-        for data in input_x:
-            self.interpreter.set_tensor(self.input["index"], data[np.newaxis, :])
-            self.interpreter.invoke()
-            pred = self.interpreter.get_tensor(self.output["index"])
-            preds.append(pred[0])
-        return preds
-
-    def shape(self):
-        return 1, self.input["shape"]
-
-
-def frame_samples(clip, track, num_frames=25):
-    regions = track.bounds_history[-50:]
-
-    start_index = 0
-    for r in regions:
-        # only have 50 frames in memory
-        if r.frame_number >= clip.current_frame - 50:
-            break
-        start_index += 1
-
-    logging.info(
-        "Getting frame samples current frame %s starting at %s frame# %s",
-        clip.current_frame,
-        start_index,
-        regions[start_index].frame_number,
-    )
-    regions = regions[start_index:]
-    regions = [
-        region
-        for region in regions
-        if region.mass > 0
-        and region.frame_number not in clip.ffc_frames
-        and not region.blank
-        and region.width > 0
-        and region.height > 0
-    ]
-
-    import numpy as np
-
-    # Create a Generator instance (seed is optional for reproducibility)
-    rng = np.random.default_rng()
-    samples = rng.choice(
-        np.array(regions), size=min(len(regions), num_frames), replace=False
-    )
-    return samples
-
-
-def preprocess_segments(clip, track, samples):
-    import numpy as np
-    from tools import preprocess_movement, normalize
-
-    frame_temp_medians = {}
-    clip_thermals_at_zero = True
-    filtered_norm_limits = get_limits(clip, track)
-    frames = []
-    mass = 0
-    samples = sorted(samples, key=lambda sample: sample.frame_number)
-
-    for region in samples:
-        mass += region.mass
-
-        frame_number = region.frame_number
-        frame = clip.get_frame(frame_number)
-        frame_temp_medians[frame_number] = np.median(frame.thermal)
-
-        if clip_thermals_at_zero:
-            # check that we have nice values other wise allow negatives when normalizing
-            sub_thermal = region.subimage(frame.thermal)
-            sub_thermal = (
-                np.float32(sub_thermal) - frame_temp_medians[region.frame_number]
-            )
-            if np.median(sub_thermal) <= 0:
-                clip_thermals_at_zero = False
-        cropped_frame = frame.crop_by_region(region)
-        cropped_frame.thermal -= frame_temp_medians[frame_number]
-        cropped_frame.resize_with_aspect((32, 32), clip.crop_rectangle)
-        frames.append(cropped_frame)
-    mass = mass / len(samples)
-    preprocessed = []
-
-    for frame in frames:
-        frame.filtered, stats = normalize(
-            frame.filtered,
-            min=filtered_norm_limits[0],
-            max=filtered_norm_limits[1],
-            new_max=255,
-        )
-        frame.thermal, _ = normalize(frame.thermal, new_max=255)
-        preprocessed.append(frame)
-    preprocessed = preprocess_movement(preprocessed)
-
-    # import cv2
-    # display = np.uint8(preprocessed[:,:,2])
-    # cv2.imshow("f",display)
-    # cv2.waitKey(0)
-    if frames is None:
-        logging.warn("No frames to predict on")
-    preprocessed = np.array(preprocessed)
-    return [region.frame_number for region in samples], preprocessed, mass
-
-
-def get_limits(clip, track):
-    min_diff = None
-    max_diff = 0
-    import numpy as np
-
-    filtered_norm_limits = None
-    for region in reversed(track.bounds_history):
-        if region.blank:
-            continue
-        if region.width == 0 or region.height == 0:
-            logging.warn(
-                "No width or height for frame %s regoin %s",
-                region.frame_number,
-                region,
-            )
-            continue
-        f = clip.get_frame(region.frame_number)
-        if region.blank or region.width <= 0 or region.height <= 0 or f is None:
-            continue
-
-        diff_frame = region.subimage(f.filtered)
-
-        new_max = np.amax(diff_frame)
-        new_min = np.amin(diff_frame)
-        if min_diff is None or new_min < min_diff:
-            min_diff = new_min
-        if new_max > max_diff:
-            max_diff = new_max
-
-    filtered_norm_limits = (min_diff, max_diff)
-    return filtered_norm_limits
 
 
 if __name__ == "__main__":

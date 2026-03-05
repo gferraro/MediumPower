@@ -133,12 +133,14 @@ class ClipTrackExtractor:
         regions = []
         if ffc_affected:
             clip.active_tracks = set()
+            stale_tracks = []
         else:
             regions = self._get_regions_of_interest(
                 clip, component_details[1:], centroids[1:]
             )
-            self._apply_region_matchings(clip, regions)
+            stale_tracks = self._apply_region_matchings(clip, regions)
         clip.region_history.append(regions)
+        return stale_tracks
 
     def get_delta_frame(self, clip):
         from tools import normalize
@@ -254,7 +256,7 @@ class ClipTrackExtractor:
 
         unactive_tracks = clip.active_tracks - matched_tracks - new_tracks
         clip.active_tracks = matched_tracks | new_tracks
-        self._filter_inactive_tracks(clip, unactive_tracks)
+        return self._filter_inactive_tracks(clip, unactive_tracks)
 
     def _match_existing_tracks(self, clip, regions):
 
@@ -355,6 +357,7 @@ class ClipTrackExtractor:
 
     def _filter_inactive_tracks(self, clip, unactive_tracks):
         """Filters tracks which are or have become inactive"""
+        stale_tracks = []
         for track in unactive_tracks:
             track.add_blank_frame()
             if track.tracking:
@@ -364,6 +367,9 @@ class ClipTrackExtractor:
                         clip.current_frame, track.get_id()
                     )
                 )
+            else:
+                stale_tracks.append(track)
+        return stale_tracks
 
 
 def is_affected_by_ffc(cptv_frame):
