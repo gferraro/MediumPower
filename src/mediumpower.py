@@ -163,6 +163,7 @@ def medium_power(connection, frame_queue, processor):
             extra_b = extra_b[start_index + len("start\n\n") :]
         else:
             if len(extra_b) == 0:
+                logging.info("Disconnected waiting for start")
                 # disconnected
                 return
             extra_b = None
