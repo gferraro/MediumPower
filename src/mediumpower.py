@@ -150,7 +150,7 @@ def medium_power(connection, frame_queue, processor):
     while True:
 
         # wait for start message
-        if extra_b is None:
+        if extra_b is None or len(extra_b) == 0:
             try:
                 extra_b = connection.recv(headers.frame_size)
             except:
@@ -566,6 +566,8 @@ def run_classifier(frame_queue):
                                 "Couldnt load dbus will try again ", exc_info=True
                             )
                     frame_i += 1
+                    if frame_i ==1:
+                        logging.info("Recording started")
 
                     # remove stale tracks
                     if len(monitored_tracks) > 0 and dbus_service:
