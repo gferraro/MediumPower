@@ -86,10 +86,6 @@ def main():
             logging.info("connection from %s", client_address)
             # log_event("camera-connected", {"type": "thermal"})
             medium_power(connection, frame_queue, processor)
-        except socket.timeout:
-            #
-            print("TIMEOUT")
-            break
         except KeyboardInterrupt:
             logging.info("\nCtrl+C pressed. Exiting gracefully.")
             break
@@ -164,6 +160,25 @@ def medium_power(connection, frame_queue, processor):
 
     while True:
 
+        # wait for start message
+        if extra_b is None:
+            try:
+                extra_b = connection.recv(headers.frame_size)
+            except:
+                logging.error("Couldnt get start", exc_info=True)
+                extra_b = None
+                time.sleep(1)
+                continue
+        start_index = extra_b.find(b"start\n\n")
+        if start_index > -1:
+            extra_b = extra_b[start_index + len("start\n\n") :]
+        else:
+            if len(extra_b) == 0:
+                # disconnected
+                return
+            extra_b = None
+            continue
+
         reader = CptvStreamReader()
         decompressor = zlib.decompressobj(wbits=-zlib.MAX_WBITS)
         recording = False
@@ -178,7 +193,7 @@ def medium_power(connection, frame_queue, processor):
         byte_data = b""
         if extra_b is not None:
             data = extra_b
-
+            f.write(extra_b)
         stream_i += 1
         while not finished:
             try:
@@ -189,7 +204,7 @@ def medium_power(connection, frame_queue, processor):
                     if recording:
                         logging.error("Mid recording failed to receive more data")
                         frame_queue.put(CLEAR_SIGNAL)
-                        return
+                    return
             except:
                 if recording:
                     logging.error("Mid recording failed to receive more data")
@@ -207,8 +222,9 @@ def medium_power(connection, frame_queue, processor):
                     logging.info("Received clear finished file")
                     finished = True
                     frame_queue.put(CLEAR_SIGNAL)
-
                     f.close()
+                    # might have another start
+                    extra_b = byte_data[clear_index + len("clear") :]
                 else:
                     f.write(byte_data)
                     logging.debug(
@@ -264,8 +280,9 @@ def medium_power(connection, frame_queue, processor):
                     )
                     break
         logging.info(
-            "Finished processing left over bytes are %s",
+            "Finished processing left over bytes are %s num frames %s",
             "None" if u8_data is None else len(u8_data),
+            frame_i,
         )
 
 
@@ -496,10 +513,10 @@ def run_classifier(frame_queue):
     predict_every = 20
     # this might need to be stored and queryable as not all services that want these may be running yet
     dbus_service = None
-    monitored_tracks = {}
     try:
         while True:
             logging.info("Making a new clip")
+            monitored_tracks = {}
 
             track_extractor, clip = new_clip()
             logging.info("Waiting for frames")
@@ -510,6 +527,23 @@ def run_classifier(frame_queue):
                         logging.info(
                             "PiClassifier received clear signal will start a new clip"
                         )
+                        for track_id, track_pred in monitored_tracks.items():
+                            predicted_as = classifier.labels[
+                                track_pred.best_label_index
+                            ]
+                            track = [
+                                track for track in clip.tracks if track.id == track_id
+                            ][0]
+                            dbus_service.tracking(
+                                clip.id,
+                                track.id,
+                                track_pred.normalized_score(),
+                                track.bounds_history[-1],
+                                False,
+                                track_pred.last_frame_classified,
+                                predicted_as,
+                                classifier.id,
+                            )
                         dbus_service.recording(False)
 
                     elif frame == STOP_SIGNAL:

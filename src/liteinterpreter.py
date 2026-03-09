@@ -88,7 +88,7 @@ def frame_samples(clip, track, num_frames=25):
             break
         start_index += 1
 
-    logging.info(
+    logging.debug(
         "Getting frame samples current frame %s starting at %s frame# %s",
         clip.current_frame,
         start_index,
