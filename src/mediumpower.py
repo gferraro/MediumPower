@@ -558,7 +558,7 @@ def run_classifier(frame_queue):
                 else:
                     frame, time_sent = frame
                     stale_tracks = track_extractor.process_frame(clip, frame)
-                    if dbus_service and classifier is not None:
+                    if dbus_service is None and classifier is not None:
                         try:
                             dbus_service = DbusService(headers, classifier.labels)
                             dbus_service.recording(True)
