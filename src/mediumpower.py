@@ -550,6 +550,7 @@ def run_classifier(frame_queue):
                             logging.error(
                                 "Dbus service never got started and recording is now finished"
                             )
+                        frame_i = 0
 
                     elif frame == STOP_SIGNAL:
                         logging.info("PiClassifier received stop signal")
@@ -566,7 +567,7 @@ def run_classifier(frame_queue):
                                 "Couldnt load dbus will try again ", exc_info=True
                             )
                     frame_i += 1
-                    if frame_i ==1:
+                    if frame_i == 1:
                         logging.info("Recording started")
 
                     # remove stale tracks
