@@ -21,21 +21,18 @@ SOCKET_NAME = "/var/run/lepton-frames"
 start = time.time()
 
 
+DEBUG = False
+
+
 def parse_cptv(cptv_file, frame_queue):
-    import cv2
     from cptv_rs_python_bindings import CptvReader
     from cptv import Frame
-    import numpy as np
 
     reader = CptvReader(cptv_file)
     while True:
         frame = reader.next_frame()
         if frame is None:
             break
-        # normed, _ = normalize(frame.pix, new_max=255)
-        # normed = np.uint8(normed)
-        # cv2.imshow("f", normed)
-        # cv2.waitKey(100)
         py_frame = Frame(
             frame.pix,
             frame.time_on,
@@ -110,7 +107,6 @@ def handle_headers(connection):
     while True:
         logging.info("Getting header info")
         data = connection.recv(4096)
-        logging.info("Received %s", len(data))
         if not data:
             raise Exception("Disconnected from camera while getting headers")
         headers += data
@@ -148,16 +144,9 @@ def medium_power(connection, frame_queue, processor):
     from cptv import Frame
 
     headers, extra_b = handle_headers(connection)
-    logging.info(
-        "Got header running medium power extra size %s: %s", len(extra_b), extra_b[:50]
-    )
-    logging.info(
-        "Headers frame size is %s extra b size is %s", headers.frame_size, len(extra_b)
-    )
-    logging.info("Got headers %s", headers)
     stream_i = 0
     connection.settimeout(5)
-
+    logging.info("Medium Power =======")
     while True:
 
         # wait for start message
@@ -188,12 +177,14 @@ def medium_power(connection, frame_queue, processor):
         data = b""
         finished = False
 
-        logging.info(f"Writing raw bytes to /home/pi/streamed/raw{stream_i}.gz")
-        f = open(f"/home/pi/streamed/raw{stream_i}.gz", "wb")
+        if DEBUG:
+            logging.info(f"Writing raw bytes to /home/pi/streamed/raw{stream_i}.gz")
+            f = open(f"/home/pi/streamed/raw{stream_i}.gz", "wb")
         byte_data = b""
         if extra_b is not None:
             data = extra_b
-            f.write(extra_b)
+            if DEBUG:
+                f.write(extra_b)
         stream_i += 1
         while not finished:
             try:
@@ -217,16 +208,18 @@ def medium_power(connection, frame_queue, processor):
                 clear_index = byte_data.find(b"clear")
                 if clear_index > -1:
                     byte_data = byte_data[:clear_index]
-                    f.write(byte_data)
 
                     logging.info("Received clear finished file")
                     finished = True
                     frame_queue.put(CLEAR_SIGNAL)
-                    f.close()
+                    if DEBUG:
+                        f.write(byte_data)
+                        f.close()
                     # might have another start
                     extra_b = byte_data[clear_index + len("clear") :]
                 else:
-                    f.write(byte_data)
+                    if DEBUG:
+                        f.write(byte_data)
                     logging.debug(
                         "Adding new data %s to old data %s", len(byte_data), len(data)
                     )
@@ -300,11 +293,11 @@ def decompress(decompressor, data, read_header=False):
     if not read_header:
         result = gzip._read_gzip_header(fp)
         if result is None:
-            logging.info("Couldn't read header")
-            return data, b"", read_header
+            raise Exception("No gzip header found")
+            # logging.info("Couldn't read header")
+            # return data, b"", read_header
         data = data[fp.tell() :]
         read_header = True
-        logging.info("Read header")
     try:
         decompressed = decompressor.decompress(data)
     except:
@@ -323,6 +316,7 @@ def decompress(decompressor, data, read_header=False):
     crc, length = struct.unpack("<II", decompressor.unused_data[:8])
 
     if crc != zlib.crc32(decompressed):
+        # not check this proparly so will always error
         logging.error("CRC error")
         return unused_data, decompressed, read_header
 
@@ -529,24 +523,32 @@ def run_classifier(frame_queue):
                         logging.info(
                             "PiClassifier received clear signal will start a new clip"
                         )
-                        for track_id, track_pred in monitored_tracks.items():
-                            predicted_as = classifier.labels[
-                                track_pred.best_label_index
-                            ]
-                            track = [
-                                track for track in clip.tracks if track.id == track_id
-                            ][0]
-                            dbus_service.tracking(
-                                clip.id,
-                                track.id,
-                                track_pred.normalized_score(),
-                                track.bounds_history[-1],
-                                False,
-                                track_pred.last_frame_classified,
-                                predicted_as,
-                                classifier.id,
+                        if dbus_service:
+
+                            for track_id, track_pred in monitored_tracks.items():
+                                predicted_as = classifier.labels[
+                                    track_pred.best_label_index
+                                ]
+                                track = [
+                                    track
+                                    for track in clip.tracks
+                                    if track.id == track_id
+                                ][0]
+                                dbus_service.tracking(
+                                    clip.id,
+                                    track.id,
+                                    track_pred.normalized_score(),
+                                    track.bounds_history[-1],
+                                    False,
+                                    track_pred.last_frame_classified,
+                                    predicted_as,
+                                    classifier.id,
+                                )
+                            dbus_service.recording(False)
+                        else:
+                            logging.error(
+                                "Dbus service never got started and recording is now finished"
                             )
-                        dbus_service.recording(False)
 
                     elif frame == STOP_SIGNAL:
                         logging.info("PiClassifier received stop signal")
@@ -554,7 +556,7 @@ def run_classifier(frame_queue):
                 else:
                     frame, time_sent = frame
                     stale_tracks = track_extractor.process_frame(clip, frame)
-                    if dbus_service is None and classifier is not None:
+                    if dbus_service and classifier is not None:
                         try:
                             dbus_service = DbusService(headers, classifier.labels)
                             dbus_service.recording(True)
@@ -565,7 +567,7 @@ def run_classifier(frame_queue):
                     frame_i += 1
 
                     # remove stale tracks
-                    if len(monitored_tracks) > 0:
+                    if len(monitored_tracks) > 0 and dbus_service:
                         for track in stale_tracks:
                             if track.id in monitored_tracks:
                                 track_pred = monitored_tracks[track.id]
