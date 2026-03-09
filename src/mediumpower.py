@@ -242,9 +242,11 @@ def medium_power(connection, frame_queue, processor):
                     decompressor, data, read_header
                 )
             except:
+                # if this happens log it and then get the file from rp2040
                 logging.error("Error decompressing ", exc_info=True)
-                time.sleep(1)
-                continue
+                return
+                # time.sleep(1)
+                # continue
 
             if len(decompressed_chunk) == 0:
                 continue
