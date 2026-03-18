@@ -1,6 +1,5 @@
 import threading
 import logging
-import json
 import numpy as np
 import time
 import dbus
@@ -24,6 +23,8 @@ class Service(dbus.service.Object):
         super().__init__(dbus, DBUS_PATH)
         self.headers = headers
         self.labels = labels
+        self.tracking_events = []
+        self.lock = threading.Lock()
 
     @dbus.service.method(
         DBUS_NAME,
@@ -55,6 +56,17 @@ class Service(dbus.service.Object):
         logging.info("Getting labels %s", self.labels)
         return self.labels
 
+    @dbus.service.signal(DBUS_NAME, signature="a(iiiaisiaiiibbis)")
+    def GetTrackingEventsAndClear(self):
+        with self.lock:
+            logging.info(
+                "Getting tracking events #%s and clearing", len(self.tracking_events)
+            )
+
+            events = self.tracking_events
+            self.tracking_events = []
+        return events
+
     @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbis")
     def Tracking(
         self,
@@ -71,7 +83,24 @@ class Service(dbus.service.Object):
         last_prediction_frame,
         model_id,
     ):
-        pass
+        with self.lock:
+            self.tracking_events.append(
+                (
+                    time.time(),
+                    clip_id,
+                    track_id,
+                    prediction,
+                    what,
+                    confidence,
+                    region,
+                    frame,
+                    mass,
+                    blank,
+                    tracking,
+                    last_prediction_frame,
+                    model_id,
+                )
+            )
 
     @dbus.service.signal(DBUS_NAME, signature="ii")
     def TrackFiltered(self, clip_id, track_id):

@@ -308,9 +308,9 @@ def decompress(decompressor, data, read_header=False):
 
     # print("Tell is no0w ", fp.tell()," Unused data is " , len(decompressor.unused_data), " decompressed is ",len(decompressed))
     if not decompressor.eof or len(decompressor.unused_data) < 8:
-        print("Reach eof")
+        # print("Reach eof")
         # 1/0
-        return unused_data, decompressed, read_header
+        # return unused_data, decompressed, read_header
         raise EOFError(
             "Compressed file ended before the end-of-stream " "marker was reached"
         )
@@ -599,7 +599,7 @@ def run_classifier(frame_queue):
                         )
                         identify_last_frame(monitored_tracks, clip, load_model_thread)
 
-                if dbus_service is not None:
+                if dbus_service:
                     for track_id, track_pred in monitored_tracks.items():
                         predicted_as = classifier.labels[track_pred.best_label_index]
                         track = [
