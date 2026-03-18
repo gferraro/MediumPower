@@ -310,7 +310,7 @@ def decompress(decompressor, data, read_header=False):
     if not decompressor.eof or len(decompressor.unused_data) < 8:
         # print("Reach eof")
         # 1/0
-        # return unused_data, decompressed, read_header
+        return unused_data, decompressed, read_header
         raise EOFError(
             "Compressed file ended before the end-of-stream " "marker was reached"
         )

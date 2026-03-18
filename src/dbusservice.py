@@ -56,23 +56,26 @@ class Service(dbus.service.Object):
         logging.info("Getting labels %s", self.labels)
         return self.labels
 
-    @dbus.service.signal(DBUS_NAME, signature="a(iiiaisiaiiibbis)")
+    @dbus.service.method(DBUS_NAME, signature="a(iiiaisiaiiibbis)")
     def GetTrackingEventsAndClear(self):
         with self.lock:
             logging.info(
                 "Getting tracking events #%s and clearing", len(self.tracking_events)
             )
-
             events = self.tracking_events
             self.tracking_events = []
-        return events
+        if len(events) == 0:
+            return dbus.Array([], signature="(iiiaisiaiiibbis)")
+
+        else:
+            return events
 
     @dbus.service.signal(DBUS_NAME, signature="iiaisiaiiibbis")
     def Tracking(
         self,
         clip_id,
         track_id,
-        prediction,
+        predictions,
         what,
         confidence,
         region,
@@ -86,12 +89,12 @@ class Service(dbus.service.Object):
         with self.lock:
             self.tracking_events.append(
                 (
-                    time.time(),
+                    int(time.time()),
                     clip_id,
                     track_id,
-                    prediction,
+                    predictions,
                     what,
-                    confidence,
+                    int(confidence),
                     region,
                     frame,
                     mass,
@@ -162,17 +165,22 @@ class DbusService:
             return
         if prediction is not None:
             predictions = prediction.copy()
+
             predictions = np.uint8(np.round(predictions * 100))
             best = np.argmax(predictions)
+            best_pred = predictions[best]
+
+            predictions = predictions.tolist()
+
             self.service.Tracking(
                 clip_id,
                 track_id,
                 predictions,
                 pred_label,
-                predictions[best],
+                best_pred,
                 region.to_ltrb(),
                 region.frame_number,
-                region.mass,
+                int(region.mass),
                 region.blank,
                 tracking,
                 last_prediction_frame,

@@ -12,13 +12,13 @@ cd /home/pi/
 git clone https://github.com/gferraro/MediumPower.git
 cd MediumPower
 /home/pi/.venv/classifier/bin/pip install -r requirements.txt
-cd ..
 echo "Install services to systemd"
 cp thermal-medium-power.service /etc/systemd/system/
 systemctl enable thermal-medium-power
 daemon-reload
 
 
+cd ..
 echo "Setting config.toml"
 cp /etc/cacophony/config.toml /home/pi/config.toml.bak
 sed -i '/use-low-power-mode = true/a instant-classify = true' /etc/cacophony/config.toml
