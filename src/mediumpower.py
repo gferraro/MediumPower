@@ -137,6 +137,20 @@ def get_processor(process_queue):
     return p_processor
 
 
+def ask_to_stay_on(duration=60 * 5):
+    import dbus
+
+    try:
+        bus = dbus.SystemBus()
+        dbus_object = bus.get_object("org.cacophony.ATtiny", "/org/cacophony/ATtiny")
+        dbus_object.StayOnForProcess("medium-power", duration)
+        logging.info("Asked attiny to stay on for 5 minutes")
+        return True
+    except:
+        logging.error("Error asking to stay on ", exc_info=True)
+    return False
+
+
 def medium_power(connection, frame_queue, processor):
     from cptv_rs_python_bindings import CptvStreamReader
     import zlib
@@ -147,8 +161,9 @@ def medium_power(connection, frame_queue, processor):
     stream_i = 0
     connection.settimeout(5)
     logging.info("Medium Power =======")
-    while True:
+    asked_to_stay_on = False
 
+    while True:
         # wait for start message
         if extra_b is None or len(extra_b) == 0:
             try:
@@ -162,6 +177,10 @@ def medium_power(connection, frame_queue, processor):
         if start_index > -1:
             extra_b = extra_b[start_index + len("start\n\n") :]
         else:
+            # if dbus wasnt on when rec started do it now
+            if not asked_to_stay_on:
+                ask_to_stay_on()
+
             if len(extra_b) == 0:
                 logging.info("Disconnected waiting for start")
                 # disconnected
@@ -280,6 +299,7 @@ def medium_power(connection, frame_queue, processor):
             "None" if u8_data is None else len(u8_data),
             frame_i,
         )
+        asked_to_stay_on = ask_to_stay_on()
 
 
 import zlib

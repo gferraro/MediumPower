@@ -21,6 +21,7 @@ daemon-reload
 cd ..
 echo "Setting config.toml"
 cp /etc/cacophony/config.toml /home/pi/config.toml.bak
+sed -i 's/.*use-low-power-mode.*/use-low-power-mode = true/' /etc/cacophony/config.toml
 sed -i '/use-low-power-mode = true/a instant-classify = true' /etc/cacophony/config.toml
 
 echo "Installing tc2-agent"
