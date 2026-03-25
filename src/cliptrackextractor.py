@@ -148,7 +148,7 @@ class ClipTrackExtractor:
         frame = clip.frame_buffer.current_frame
         prev_frame = clip.frame_buffer.prev_frame
         if prev_frame is None:
-            return None, None
+            return None
         filtered, _ = normalize(frame.filtered, new_max=255)
         prev_filtered, _ = normalize(prev_frame.filtered, new_max=255)
         delta_filtered = np.abs(np.float32(filtered) - np.float32(prev_filtered))
