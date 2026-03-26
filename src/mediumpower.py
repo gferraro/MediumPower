@@ -137,7 +137,7 @@ def get_processor(process_queue):
     return p_processor
 
 
-def ask_to_stay_on(duration=60 * 5):
+def ask_to_stay_on(duration=5):
     import dbus
 
     try:
