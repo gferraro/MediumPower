@@ -179,7 +179,7 @@ def medium_power(connection, frame_queue, processor):
         else:
             # if dbus wasnt on when rec started do it now
             if not asked_to_stay_on:
-                ask_to_stay_on()
+                asked_to_stay_on = ask_to_stay_on()
 
             if len(extra_b) == 0:
                 logging.info("Disconnected waiting for start")
