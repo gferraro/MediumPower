@@ -42,6 +42,8 @@ def parse_cptv(cptv_file, frame_queue):
         )
         frame_queue.put((py_frame, time.time()))
         time.sleep(1 / 9)
+    frame_queue.put(CLEAR_SIGNAL)
+
     frame_queue.put(STOP_SIGNAL)
 
 
@@ -444,23 +446,59 @@ def get_active_tracks(clip):
 last_frame_predicted = None
 
 
+# classify first animal track
+# otherwise longest unclassified track
+# otherwise least false positive confidence track
+def best_track_to_classify(clip, monitored_tracks):
+    active_tracks = get_active_tracks(clip)
+    least_fp_track = None
+    unclassified_longest = None
+    for track in active_tracks:
+        track_pred = monitored_tracks.get(track.id)
+        if track_pred is None or track_pred.num_frames_classified == 0:
+            if unclassified_longest is None:
+                unclassified_longest = track
+            elif len(track) > len(unclassified_longest):
+                unclassified_longest = track
+            continue
+        tag = classifier.labels[track_pred.best_label_index]
+        if tag == "false-positive":
+            conf = track_pred.normalized_best_score()
+            if least_fp_track is None:
+                least_fp_track = (conf, track)
+            elif least_fp_track[0] > conf:
+                least_fp_track = (conf, track)
+        else:
+            # for now just classify first track that isn't fp
+            logging.info("Continuing to classify %s with tag %s", track, tag)
+            return track
+    if unclassified_longest:
+        logging.info("Classifying longest unclassified track")
+        return unclassified_longest
+    elif least_fp_track is not None:
+        logging.info("Classifying most unlikely fp track")
+        return least_fp_track[1]
+    return None
+
+    # return longest track?
+
+
 def identify_last_frame(monitored_tracks, clip, load_model_thread):
     import numpy as np
     from trackprediction import TrackPrediction
 
     global last_frame_predicted
 
-    active_tracks = get_active_tracks(clip)
-    if len(active_tracks) == 0:
+    track = best_track_to_classify(clip, monitored_tracks)
+    if track is None:
         logging.info("No active tracks %s", len(clip.active_tracks))
-        return
+        return None
     if load_model_thread.is_alive():
         logging.info("Waiting for model thread to finish")
         load_model_thread.join()
     if classifier is None:
         logging.info("Not classifying as couldn't load model")
-        return
-    track = active_tracks[0]
+        return None
     start = time.time()
     pred_result = classifier.predict_recent_frames(
         clip,
@@ -495,7 +533,7 @@ def identify_last_frame(monitored_tracks, clip, load_model_thread):
         #     )
     else:
         logging.error("Pred is none for %s", track)
-    return monitored_tracks
+    return track, track_pred
 
 
 classifier = None
@@ -521,6 +559,8 @@ def load_model():
 
 def run_classifier(frame_queue):
     from dbusservice import DbusService
+    from eventlog import log_event
+    from datetime import datetime
 
     load_model_thread = threading.Thread(target=load_model)
     load_model_thread.start()
@@ -528,10 +568,34 @@ def run_classifier(frame_queue):
     headers = {}
     frame_i = 0
     predict_every = 20
-    # this might need to be stored and queryable as not all services that want these may be running yet
     dbus_service = None
+    tracking_events = []
+
     try:
         while True:
+            if len(tracking_events) > 0:
+                logging.info("Logging tracking events")
+                for tracking_event in tracking_events:
+                    (
+                        track_id,
+                        tag,
+                        conf,
+                        region,
+                        last_frame_classified,
+                        classified_at,
+                    ) = tracking_event
+                    log_event(
+                        "tracking-event",
+                        {
+                            "track_id": track_id,
+                            "tag": tag,
+                            "confidence": round(100 * conf),
+                            "region": region.to_ltrb(),
+                            "last_frame_classified": last_frame_classified,
+                            "time": classified_at,
+                        },
+                    )
+                tracking_events = []
             logging.info("Making a new clip")
             monitored_tracks = {}
 
@@ -571,7 +635,7 @@ def run_classifier(frame_queue):
                                 "Dbus service never got started and recording is now finished"
                             )
                         frame_i = 0
-
+                        break
                     elif frame == STOP_SIGNAL:
                         logging.info("PiClassifier received stop signal")
                         return
@@ -617,8 +681,27 @@ def run_classifier(frame_queue):
                             frame_i,
                             time.time() - time_sent,
                         )
-                        identify_last_frame(monitored_tracks, clip, load_model_thread)
-
+                        new_prediction = identify_last_frame(
+                            monitored_tracks, clip, load_model_thread
+                        )
+                        if new_prediction is not None:
+                            track, track_pred = new_prediction
+                            predicted_as = classifier.labels[
+                                track_pred.best_label_index
+                            ]
+                            conf = track_pred.normalized_best_score()
+                            now = datetime.now()
+                            tracking_events.append(
+                                (
+                                    track_pred.track_id,
+                                    predicted_as,
+                                    conf,
+                                    track.bounds_history[-1],
+                                    track_pred.last_frame_classified,
+                                    now.strftime("%B %d, %Y %I:%M %p"),
+                                )
+                            )
+                            #    time.time()))
                 if dbus_service:
                     for track_id, track_pred in monitored_tracks.items():
                         predicted_as = classifier.labels[track_pred.best_label_index]
