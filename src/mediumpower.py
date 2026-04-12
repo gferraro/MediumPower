@@ -584,13 +584,14 @@ def run_classifier(frame_queue):
                         last_frame_classified,
                         classified_at,
                     ) = tracking_event
+                    region_list = [x.item() for x in region.to_ltrb()]
                     log_event(
-                        "tracking-event",
+                        "tracking",
                         {
                             "track_id": track_id,
                             "tag": tag,
-                            "confidence": round(100 * conf),
-                            "region": region.to_ltrb(),
+                            "confidence": int(round(100 * conf)),
+                            "region": region_list,
                             "last_frame_classified": last_frame_classified,
                             "time": classified_at,
                         },
