@@ -699,7 +699,7 @@ def run_classifier(frame_queue):
                                     conf,
                                     track.bounds_history[-1],
                                     track_pred.last_frame_classified,
-                                    now.strftime("%B %d, %Y %I:%M %p"),
+                                    now.strftime("%B %d, %Y %I:%M:%S %p"),
                                 )
                             )
                             #    time.time()))
