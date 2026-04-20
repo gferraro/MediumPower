@@ -162,6 +162,7 @@ def medium_power(connection, frame_queue, processor):
     import zlib
     import numpy as np
     from cptv import Frame
+    from cameraconfig import ThermalConfig
 
     headers, extra_b = handle_headers(connection)
     stream_i = 0
@@ -169,6 +170,7 @@ def medium_power(connection, frame_queue, processor):
     logging.info("Medium Power =======")
     asked_to_stay_on = False
 
+    config = ThermalConfig.load_from_file()
     while True:
         # wait for start message
         if extra_b is None or len(extra_b) == 0:
@@ -208,7 +210,7 @@ def medium_power(connection, frame_queue, processor):
             f = open(f"/var/spool/cptv/raw{stream_i}.cptv", "wb")
             from cptvwriter import write_header
 
-            write_header(f)
+            write_header(f, config)
         byte_data = b""
         if extra_b is not None:
             data = extra_b

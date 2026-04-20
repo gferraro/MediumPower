@@ -26,7 +26,7 @@ COLS = 160
 ROWS = 120
 
 
-def write_header(fileobj):
+def write_header(fileobj, config):
     timestamp = datetime.now()
 
     mtime = timestamp.timestamp()
@@ -39,9 +39,12 @@ def write_header(fileobj):
     fw.uint8(ord(Field.COMPRESSION), 1)
     fw.uint32(ord(Field.X_RESOLUTION), COLS)
     fw.uint32(ord(Field.Y_RESOLUTION), ROWS)
-    fw.float32(ord(Field.LATITUDE), -36.475887)
 
-    fw.float32(ord(Field.LONGITUDE), 174.73534)
+    fw.string(ord(Field.DEVICENAME), config.device.name)
+    fw.uint32(ord(Field.DEVICEID), config.device.device_id)
+
+    fw.float32(ord(Field.LATITUDE), config.location.latitude)
+    fw.float32(ord(Field.LONGITUDE), config.location.longitude)
     fw.timestamp(ord(Field.TIMESTAMP), timestamp)
     fw.write(ord(Section.HEADER), s)
 
