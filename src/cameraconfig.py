@@ -128,7 +128,7 @@ class RecorderConfig:
     min_disk_space_mb = attr.ib()
 
     @classmethod
-    def load(cls, recorder, window, location_config):
+    def load(cls, recorder):
         return cls(
             constant_recorder=recorder.get("constant-recorder", False),
             disable_recordings=recorder.get("disable-recordings", False),
@@ -195,9 +195,7 @@ class ThermalConfig:
         return cls(
             config_file=filename,
             motion=CameraMotionConfig.load(raw.get("thermal-motion", {}), model),
-            recorder=RecorderConfig.load(
-                raw.get("thermal-recorder", {}), raw.get("windows", {}), location_config
-            ),
+            recorder=RecorderConfig.load(raw.get("thermal-recorder", {})),
             device=DeviceConfig.load(raw.get("device", {})),
             device_setup=DeviceSetup.load(raw.get("device-setup", {})),
             location=location_config,
