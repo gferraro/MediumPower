@@ -39,6 +39,9 @@ def write_header(fileobj):
     fw.uint8(ord(Field.COMPRESSION), 1)
     fw.uint32(ord(Field.X_RESOLUTION), COLS)
     fw.uint32(ord(Field.Y_RESOLUTION), ROWS)
+    fw.float32(ord(Field.LATITUDE), -36.475887)
+
+    fw.float32(ord(Field.LONGITUDE), 174.73534)
     fw.timestamp(ord(Field.TIMESTAMP), timestamp)
     fw.write(ord(Section.HEADER), s)
 
