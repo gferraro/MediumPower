@@ -120,7 +120,6 @@ class RecorderConfig:
     preview_secs = attr.ib()
     min_secs = attr.ib()
     max_secs = attr.ib()
-    rec_window = attr.ib()
     output_dir = attr.ib()
     disable_recordings = attr.ib()
     constant_recorder = attr.ib()
@@ -174,7 +173,6 @@ class ThermalConfig:
     recorder = attr.ib()
     device = attr.ib()
     location = attr.ib()
-    throttler = attr.ib()
     device_setup = attr.ib()
     config_file = attr.ib()
 

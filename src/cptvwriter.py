@@ -40,7 +40,7 @@ def write_header(fileobj, config):
     fw.uint32(ord(Field.X_RESOLUTION), COLS)
     fw.uint32(ord(Field.Y_RESOLUTION), ROWS)
 
-    fw.string(ord(Field.DEVICENAME), config.device.name)
+    # fw.string(ord(Field.DEVICENAME), config.device.name)
     fw.uint32(ord(Field.DEVICEID), config.device.device_id)
 
     fw.float32(ord(Field.LATITUDE), config.location.latitude)

@@ -110,43 +110,47 @@ class ClipTrackExtractor:
 
         ffc_affected = is_affected_by_ffc(frame)
 
-        self.background_alg.process_frame(frame, ffc_affected)
-
         thermal = frame.pix.copy()
         clip.ffc_affected = ffc_affected
         mask = None
         filtered = None
-        if self.do_tracking or self.calculate_filtered or self.calculate_thumbnail_info:
-            filtered = np.float32(frame.pix) - self.background_alg.background
-        if self.do_tracking or self.calculate_thumbnail_info:
-            from tools import detect_objects
+        component_details = None
+        if self.background_alg.background is not None:
+            if  self.do_tracking or self.calculate_filtered or self.calculate_thumbnail_info:
+                filtered = np.float32(frame.pix) - self.background_alg.background
+            if self.do_tracking or self.calculate_thumbnail_info:
+                from tools import detect_objects
 
-            obj_filtered, threshold = self._get_filtered_frame(
-                thermal, denoise=self.config.denoise
-            )
+                obj_filtered, threshold = self._get_filtered_frame(
+                    thermal, denoise=self.config.denoise
+                )
 
-            _, mask, component_details, centroids = detect_objects(
-                obj_filtered, otsus=False, threshold=threshold, kernel=(5, 5)
-            )
+                _, mask, component_details, centroids = detect_objects(
+                    obj_filtered, otsus=False, threshold=threshold, kernel=(5, 5)
+                )
         f = clip.add_frame(thermal, filtered, mask, ffc_affected)
 
         regions = []
+        stale_tracks = []
+
         if ffc_affected:
             clip.active_tracks = set()
-            stale_tracks = []
-        else:
+        elif component_details is not None:
             regions = self._get_regions_of_interest(
                 clip, component_details[1:], centroids[1:]
             )
             stale_tracks = self._apply_region_matchings(clip, regions)
         clip.region_history.append(regions)
         # self.debug_frame(f)
+        self.background_alg.process_frame(frame, ffc_affected)
+
         return stale_tracks
 
     def debug_frame(self, frame):
         import cv2
         from tools import normalize
-
+        if frame.filtered is None:
+            return
         thermal = frame.thermal
         thermal, _ = normalize(thermal, new_max=255)
 
@@ -173,8 +177,11 @@ class ClipTrackExtractor:
         if prev_frame is None:
             return None
         filtered, _ = normalize(frame.filtered, new_max=255)
-        prev_filtered, _ = normalize(prev_frame.filtered, new_max=255)
-        delta_filtered = np.abs(np.float32(filtered) - np.float32(prev_filtered))
+        if prev_frame.filtered is None:
+            delta_filtered = filtered
+        else:
+            prev_filtered, _ = normalize(prev_frame.filtered, new_max=255)
+            delta_filtered = np.abs(np.float32(filtered) - np.float32(prev_filtered))
         return delta_filtered
 
     def _get_regions_of_interest(self, clip, component_details, centroids=None):
@@ -279,6 +286,8 @@ class ClipTrackExtractor:
 
         unactive_tracks = clip.active_tracks - matched_tracks - new_tracks
         clip.active_tracks = matched_tracks | new_tracks
+        for t in clip.active_tracks:
+            logging.info("Active track %s last region %s",t, t.last_bound)
         return self._filter_inactive_tracks(clip, unactive_tracks)
 
     def _match_existing_tracks(self, clip, regions):
