@@ -1,0 +1,155 @@
+# Copyright 2019 The Cacophony Project
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import gzip
+import struct
+from io import BytesIO
+from datetime import datetime, timedelta
+
+
+import struct
+
+MAGIC = b"CPTV"
+VERSION = b"\x02"
+COLS = 160
+ROWS = 120
+
+
+def write_header(fileobj):
+    timestamp = datetime.now()
+
+    mtime = timestamp.timestamp()
+    s = gzip.GzipFile(fileobj=fileobj, mode="wb", mtime=mtime, compresslevel=1)
+
+    s.write(MAGIC)
+    s.write(VERSION)
+
+    fw = FieldWriter()
+    fw.uint8(ord(Field.COMPRESSION), 1)
+    fw.uint32(ord(Field.X_RESOLUTION), COLS)
+    fw.uint32(ord(Field.Y_RESOLUTION), ROWS)
+    fw.timestamp(ord(Field.TIMESTAMP), timestamp)
+    fw.write(ord(Section.HEADER), s)
+
+
+class FieldWriter:
+    def __init__(self):
+        self.s = BytesIO()
+        self.count = 0
+
+    def write(self, section_type, dest):
+        dest.write(struct.pack("<BB", section_type, self.count))
+        dest.write(self.s.getbuffer())
+
+    def timestamp(self, code, t):
+        micros = int(t.timestamp() * 1e6)
+        self.uint64(code, micros)
+
+    def uint8(self, code, val):
+        self.s.write(struct.pack("<BBB", 1, code, val))
+        self.count += 1
+
+    def uint32(self, code, val):
+        self.s.write(struct.pack("<BBL", 4, code, int(val)))
+        self.count += 1
+
+    def uint64(self, code, val):
+        self.s.write(struct.pack("<BBQ", 8, code, val))
+        self.count += 1
+
+    def float32(self, code, fval):
+        self.s.write(struct.pack("<BBf", 4, code, fval))
+        self.count += 1
+
+    def string(self, code, val):
+        self.s.write(struct.pack("<BB", len(val), code))
+        self.s.write(val)
+        self.count += 1
+
+
+class Section:
+    HEADER = b"H"
+    FRAME = b"F"
+
+
+class Field:
+    # Header fields
+    TIMESTAMP = b"T"
+    X_RESOLUTION = b"X"
+    Y_RESOLUTION = b"Y"
+    COMPRESSION = b"C"
+    DEVICENAME = b"D"
+    DEVICEID = b"I"
+
+    PREVIEW_SECS = b"P"
+    MOTION_CONFIG = b"M"
+    LATITUDE = b"L"
+    LONGITUDE = b"O"
+
+    LOC_TIMESTAMP = b"S"
+    ALTITUDE = b"A"
+    ACCURACY = b"U"
+    FPS = b"Z"
+    MODEL = b"E"
+    BRAND = b"B"
+    FIRMWARE = b"V"
+    CAMERA_SERIAL = b"N"
+    BACKGROUND_FRAME = b"g"
+
+    # Frame fields
+    BIT_WIDTH = b"w"
+    FRAME_SIZE = b"f"
+    TIME_ON = b"t"
+    LAST_FFC_TIME = b"c"
+
+    TEMP_C = b"a"
+    LAST_FFC_TEMP_C = b"b"
+
+
+TIMESTAMP_FIELDS = {Field.TIMESTAMP, Field.LOC_TIMESTAMP}
+
+UINT32_FIELDS = {
+    Field.X_RESOLUTION,
+    Field.Y_RESOLUTION,
+    Field.FRAME_SIZE,
+    Field.TIME_ON,
+    Field.LAST_FFC_TIME,
+    Field.DEVICEID,
+    Field.CAMERA_SERIAL,
+}
+
+UINT8_FIELDS = {
+    Field.COMPRESSION,
+    Field.BIT_WIDTH,
+    Field.PREVIEW_SECS,
+    Field.FPS,
+    Field.BACKGROUND_FRAME,
+}
+
+STRING_FIELDS = {
+    Field.DEVICENAME,
+    Field.MOTION_CONFIG,
+    Field.MODEL,
+    Field.BRAND,
+    Field.FIRMWARE,
+}
+
+FLOAT_FIELDS = {
+    Field.LATITUDE,
+    Field.LONGITUDE,
+    Field.ALTITUDE,
+    Field.ACCURACY,
+    Field.LAST_FFC_TEMP_C,
+    Field.TEMP_C,
+}

@@ -21,7 +21,12 @@ SOCKET_NAME = "/var/run/lepton-frames"
 start = time.time()
 
 
-DEBUG = False
+WRITE_CPTV = True
+TEST = len(sys.argv) > 1
+if TEST:
+    MODEL_PATH = "tflite/converted_model.tflite"
+else:
+    MODEL_PATH = "/home/pi/tflite/converted_model.tflite"
 
 
 def parse_cptv(cptv_file, frame_queue):
@@ -58,8 +63,7 @@ def main():
     processor = get_processor(frame_queue)
     processor.start()
 
-    test = False
-    if test:
+    if TEST:
         print("Parsing test.cptv")
         parse_cptv("test.cptv", frame_queue)
         processor.join()
@@ -199,13 +203,16 @@ def medium_power(connection, frame_queue, processor):
         data = b""
         finished = False
 
-        if DEBUG:
+        if WRITE_CPTV:
             logging.info(f"Writing raw bytes to /home/pi/streamed/raw{stream_i}.gz")
-            f = open(f"/home/pi/streamed/raw{stream_i}.gz", "wb")
+            f = open(f"/var/spool/cptv/raw{stream_i}.cptv", "wb")
+            from cptvwriter import write_header
+
+            write_header(f)
         byte_data = b""
         if extra_b is not None:
             data = extra_b
-            if DEBUG:
+            if WRITE_CPTV:
                 f.write(extra_b)
         stream_i += 1
         while not finished:
@@ -234,13 +241,13 @@ def medium_power(connection, frame_queue, processor):
                     logging.info("Received clear finished file")
                     finished = True
                     frame_queue.put(CLEAR_SIGNAL)
-                    if DEBUG:
+                    if WRITE_CPTV:
                         f.write(byte_data)
                         f.close()
                     # might have another start
                     extra_b = byte_data[clear_index + len("clear") :]
                 else:
-                    if DEBUG:
+                    if WRITE_CPTV:
                         f.write(byte_data)
                     logging.debug(
                         "Adding new data %s to old data %s", len(byte_data), len(data)
@@ -546,9 +553,7 @@ def load_model():
     from pathlib import Path
 
     try:
-        classifier = LiteInterpreter(
-            Path("/home/pi/tflite/converted_model.tflite"), 1, False, False
-        )
+        classifier = LiteInterpreter(Path(MODEL_PATH), 1, False, False)
         # this way metadata is loaded
         classifier.load_model()
         logging.info("Loaded tflite model")

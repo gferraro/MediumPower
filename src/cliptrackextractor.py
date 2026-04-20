@@ -128,7 +128,7 @@ class ClipTrackExtractor:
             _, mask, component_details, centroids = detect_objects(
                 obj_filtered, otsus=False, threshold=threshold, kernel=(5, 5)
             )
-        _ = clip.add_frame(thermal, filtered, mask, ffc_affected)
+        f = clip.add_frame(thermal, filtered, mask, ffc_affected)
 
         regions = []
         if ffc_affected:
@@ -140,7 +140,30 @@ class ClipTrackExtractor:
             )
             stale_tracks = self._apply_region_matchings(clip, regions)
         clip.region_history.append(regions)
+        # self.debug_frame(f)
         return stale_tracks
+
+    def debug_frame(self, frame):
+        import cv2
+        from tools import normalize
+
+        thermal = frame.thermal
+        thermal, _ = normalize(thermal, new_max=255)
+
+        filtered = frame.filtered
+        filtered, _ = normalize(filtered, new_max=255)
+
+        backg = self.background_alg.background
+        backg, _ = normalize(backg, new_max=255)
+
+        cv2.imshow("t", np.uint8(thermal))
+        cv2.moveWindow("t", 0, 0)
+        cv2.imshow("f", np.uint8(filtered))
+        cv2.moveWindow("f", 300, 0)
+        cv2.imshow("b", np.uint8(backg))
+        cv2.moveWindow("b", 0, 300)
+
+        cv2.waitKey()
 
     def get_delta_frame(self, clip):
         from tools import normalize
