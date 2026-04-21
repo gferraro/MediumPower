@@ -109,14 +109,17 @@ class ClipTrackExtractor:
         from tools import is_affected_by_ffc
 
         ffc_affected = is_affected_by_ffc(frame)
-
         thermal = frame.pix.copy()
         clip.ffc_affected = ffc_affected
         mask = None
         filtered = None
         component_details = None
         if self.background_alg.background is not None:
-            if  self.do_tracking or self.calculate_filtered or self.calculate_thumbnail_info:
+            if (
+                self.do_tracking
+                or self.calculate_filtered
+                or self.calculate_thumbnail_info
+            ):
                 filtered = np.float32(frame.pix) - self.background_alg.background
             if self.do_tracking or self.calculate_thumbnail_info:
                 from tools import detect_objects
@@ -149,6 +152,7 @@ class ClipTrackExtractor:
     def debug_frame(self, frame):
         import cv2
         from tools import normalize
+
         if frame.filtered is None:
             return
         thermal = frame.thermal
@@ -287,7 +291,7 @@ class ClipTrackExtractor:
         unactive_tracks = clip.active_tracks - matched_tracks - new_tracks
         clip.active_tracks = matched_tracks | new_tracks
         for t in clip.active_tracks:
-            logging.info("Active track %s last region %s",t, t.last_bound)
+            logging.info("Active track %s last region %s", t, t.last_bound)
         return self._filter_inactive_tracks(clip, unactive_tracks)
 
     def _match_existing_tracks(self, clip, regions):
