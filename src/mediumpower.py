@@ -285,7 +285,8 @@ def medium_power(connection, frame_queue, processor):
 
             # logging.info("Loading frames wtih %s", len(u8_data))
             while True:
-                result = reader.next_frame_from_data(u8_data)
+                # need to figure out whats happening with the endiness
+                result = reader.next_frame_from_data(u8_data, False)
                 if result is not None:
                     frame, used = result
                     u8_data = u8_data[used:]

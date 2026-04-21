@@ -145,9 +145,38 @@ class ClipTrackExtractor:
             stale_tracks = self._apply_region_matchings(clip, regions)
         clip.region_history.append(regions)
         # self.debug_frame(f)
+        # self.debug_save(f,clip.current_frame)
         self.background_alg.process_frame(frame, ffc_affected)
 
         return stale_tracks
+
+    def debug_save(self, frame, frame_i):
+        import cv2
+        from tools import normalize
+
+        if frame.filtered is None:
+            return
+        thermal = frame.thermal
+        thermal, _ = normalize(thermal, new_max=255)
+
+        filtered = frame.filtered
+        filtered, _ = normalize(filtered, new_max=255)
+
+        backg = self.background_alg.background
+        backg, _ = normalize(backg, new_max=255)
+
+        cv2.imwrite(f"/home/pi/debug/thermal-{frame_i}.jpg", np.uint8(thermal))
+        cv2.imwrite(f"/home/pi/debug/filtered-{frame_i}.jpg", np.uint8(filtered))
+        cv2.imwrite(f"/home/pi/debug/backg-{frame_i}.jpg", np.uint8(backg))
+
+        # cv2.imshow("t", np.uint8(thermal))
+        # cv2.moveWindow("t", 0, 0)
+        # cv2.imshow("f", np.uint8(filtered))
+        # cv2.moveWindow("f", 300, 0)
+        # cv2.imshow("b", np.uint8(backg))
+        # cv2.moveWindow("b", 0, 300)
+
+        # cv2.waitKey()
 
     def debug_frame(self, frame):
         import cv2
@@ -290,8 +319,6 @@ class ClipTrackExtractor:
 
         unactive_tracks = clip.active_tracks - matched_tracks - new_tracks
         clip.active_tracks = matched_tracks | new_tracks
-        for t in clip.active_tracks:
-            logging.info("Active track %s last region %s", t, t.last_bound)
         return self._filter_inactive_tracks(clip, unactive_tracks)
 
     def _match_existing_tracks(self, clip, regions):
