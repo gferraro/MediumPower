@@ -207,7 +207,7 @@ def medium_power(connection, frame_queue, processor):
 
         if WRITE_CPTV:
             logging.info(f"Writing raw bytes to /home/pi/streamed/raw{stream_i}.gz")
-            f = open(f"/var/spool/cptv/raw{stream_i}.cptv", "wb")
+            f = open(f"/var/spool/cptv/temp/raw{stream_i}-{time.time()}.cptv", "wb")
             from cptvwriter import write_header
 
             write_header(f, config)
@@ -244,8 +244,15 @@ def medium_power(connection, frame_queue, processor):
                     finished = True
                     frame_queue.put(CLEAR_SIGNAL)
                     if WRITE_CPTV:
+                        import shutil
+                        from pathlib import Path
+
                         f.write(byte_data)
                         f.close()
+                        file_path = Path(f.name)
+                        # move from temp to actual folder
+                        shutil.move(file_path, file_path.parent.parent / file_path.name)
+
                     # might have another start
                     extra_b = byte_data[clear_index + len("clear") :]
                 else:
