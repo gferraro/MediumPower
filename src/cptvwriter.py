@@ -46,6 +46,8 @@ def write_header(fileobj, config):
     fw.float32(ord(Field.LATITUDE), config.location.latitude)
     fw.float32(ord(Field.LONGITUDE), config.location.longitude)
     fw.timestamp(ord(Field.TIMESTAMP), timestamp)
+    fw.string(ord(Field.MODEL), b"lepton3.5")
+    fw.string(ord(Field.BRAND), b"flir")
     fw.write(ord(Section.HEADER), s)
 
 
