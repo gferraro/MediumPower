@@ -52,6 +52,23 @@ def parse_cptv(cptv_file, frame_queue):
     frame_queue.put(STOP_SIGNAL)
 
 
+def run_cmd(cmd):
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            cmd,
+            shell=True,
+            encoding="ascii",
+            check=True,
+        )
+        return result.returncode == 0
+
+    except:
+        logging.error("Could not run command %s", cmd, exc_info=True)
+        return False
+
+
 def main():
 
     global connected
@@ -69,6 +86,13 @@ def main():
         processor.join()
         return
 
+    from cameraconfig import ThermalConfig
+
+    config = ThermalConfig.load_from_file()
+    if not config.recorder.instant_classify:
+        logging.info("Not running instant classify stopping service")
+        run_cmd("systemctl stop thermal-medium-power")
+        return
     logging.info("Making sock")
     try:
         os.unlink(SOCKET_NAME)
@@ -81,6 +105,7 @@ def main():
     sock.settimeout(3 * 60)  # 3 minutes
     sock.listen(1)
     global start
+
     while True:
         logging.info("waiting for a connection %s", time.time() - start)
         try:
@@ -157,12 +182,11 @@ def ask_to_stay_on(duration=5):
     return False
 
 
-def medium_power(connection, frame_queue, processor):
+def medium_power(connection, frame_queue, processor, config):
     from cptv_rs_python_bindings import CptvStreamReader
     import zlib
     import numpy as np
     from cptv import Frame
-    from cameraconfig import ThermalConfig
 
     headers, extra_b = handle_headers(connection)
     stream_i = 0
@@ -170,7 +194,6 @@ def medium_power(connection, frame_queue, processor):
     logging.info("Medium Power =======")
     asked_to_stay_on = False
 
-    config = ThermalConfig.load_from_file()
     while True:
         # wait for start message
         if extra_b is None or len(extra_b) == 0:
@@ -206,8 +229,8 @@ def medium_power(connection, frame_queue, processor):
         finished = False
 
         if WRITE_CPTV:
-            logging.info(f"Writing raw bytes to /home/pi/streamed/raw{stream_i}.gz")
             f = open(f"/var/spool/cptv/temp/raw{stream_i}-{time.time()}.cptv", "wb")
+            logging.info(f"Writing cptv file %s", f.name)
             from cptvwriter import write_header
 
             write_header(f, config)
