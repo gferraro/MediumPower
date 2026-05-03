@@ -255,13 +255,21 @@ def medium_power(connection, frame_queue, processor):
 
                     # might have another start
                     extra_b = byte_data[clear_index + len("clear") :]
+                elif byte_data.find(b"abort") > -1:
+                    logging.info("Received abort signal")
+                    finished = True
+                    frame_queue.put(CLEAR_SIGNAL)
+                    if WRITE_CPTV:
+                        f.close()
+                        os.remove(f.name)
+                    break
                 else:
                     if WRITE_CPTV:
                         f.write(byte_data)
                     logging.debug(
                         "Adding new data %s to old data %s", len(byte_data), len(data)
                     )
-                    data = data + byte_data
+                data = data + byte_data
 
             if len(data) == 0:
                 time.sleep(1)
@@ -318,6 +326,9 @@ def medium_power(connection, frame_queue, processor):
             "None" if u8_data is None else len(u8_data),
             frame_i,
         )
+        u8_data = None
+        data = b""
+        reader = None
         asked_to_stay_on = ask_to_stay_on()
 
 
