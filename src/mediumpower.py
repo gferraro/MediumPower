@@ -113,7 +113,7 @@ def main():
             connected = True
             logging.info("connection from %s", client_address)
             # log_event("camera-connected", {"type": "thermal"})
-            medium_power(connection, frame_queue, processor)
+            medium_power(connection, frame_queue, processor, config)
         except KeyboardInterrupt:
             logging.info("\nCtrl+C pressed. Exiting gracefully.")
             break
