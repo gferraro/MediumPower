@@ -178,7 +178,9 @@ def ask_to_stay_on(duration=5):
         logging.info("Asked attiny to stay on for 5 minutes")
         return True
     except:
-        logging.error("Error asking to stay on ", exc_info=True)
+
+        logging.error("Error asking to stay on ")
+        # error is so verbose and will always happen on startup, exc_info=True)
     return False
 
 
@@ -199,10 +201,12 @@ def medium_power(connection, frame_queue, processor, config):
         if extra_b is None or len(extra_b) == 0:
             try:
                 extra_b = connection.recv(headers.frame_size)
+            except (socket.timeout, TimeoutError):
+                extra_b = None
+                continue
             except:
                 logging.error("Couldnt get start", exc_info=True)
                 extra_b = None
-                time.sleep(1)
                 continue
         start_index = extra_b.find(b"start\n\n")
         if start_index > -1:
