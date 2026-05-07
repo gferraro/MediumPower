@@ -395,7 +395,7 @@ def decompress(decompressor, data, read_header=False):
 
     if crc != zlib.crc32(decompressed):
         # not check this proparly so will always error
-        logging.error("CRC error")
+        # logging.error("CRC error")
         return unused_data, decompressed, read_header
 
         raise Exception("CRC check failed")
