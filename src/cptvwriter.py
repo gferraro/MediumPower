@@ -26,10 +26,8 @@ COLS = 160
 ROWS = 120
 
 
-def write_header(fileobj, config,timestamp):
-    timestamp = datetime.now()
-
-    s = gzip.GzipFile(fileobj=fileobj, mode="wb", mtime=timestamp, compresslevel=1)
+def write_header(fileobj, config,timestamp_micros):
+    s = gzip.GzipFile(fileobj=fileobj, mode="wb",  compresslevel=1)
 
     s.write(MAGIC)
     s.write(VERSION)
@@ -44,7 +42,7 @@ def write_header(fileobj, config,timestamp):
 
     fw.float32(ord(Field.LATITUDE), config.location.latitude)
     fw.float32(ord(Field.LONGITUDE), config.location.longitude)
-    fw.timestamp(ord(Field.TIMESTAMP), timestamp)
+    fw.timestamp(ord(Field.TIMESTAMP), timestamp_micros)
     fw.string(ord(Field.MODEL), b"lepton3.5")
     fw.string(ord(Field.BRAND), b"flir")
     fw.write(ord(Section.HEADER), s)
@@ -60,8 +58,7 @@ class FieldWriter:
         dest.write(self.s.getbuffer())
 
     def timestamp(self, code, t):
-        micros = int(t.timestamp() * 1e6)
-        self.uint64(code, micros)
+        self.uint64(code, t)
 
     def uint8(self, code, val):
         self.s.write(struct.pack("<BBB", 1, code, val))
