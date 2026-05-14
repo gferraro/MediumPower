@@ -222,9 +222,9 @@ def medium_power(connection, frame_queue, processor, config):
                 return
             extra_b = None
             continue
-        timestamp = struct.unpack("<I", extra_b[:4])[0]
+        timestamp = struct.unpack("<q", extra_b[:8])[0]
         logging.info("Timestamp received is %s",timestamp)
-        extra_b = extra_b[4:]
+        extra_b = extra_b[8:]
         reader = CptvStreamReader()
         decompressor = zlib.decompressobj(wbits=-zlib.MAX_WBITS)
         recording = False
