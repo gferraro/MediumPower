@@ -222,7 +222,9 @@ def medium_power(connection, frame_queue, processor, config):
                 return
             extra_b = None
             continue
-
+        timestamp = struct.unpack("<I", extra_b[:4])[0]
+        logging.info("Timestamp received is %s",timestamp)
+        extra_b = extra_b[4:]
         reader = CptvStreamReader()
         decompressor = zlib.decompressobj(wbits=-zlib.MAX_WBITS)
         recording = False
@@ -237,7 +239,7 @@ def medium_power(connection, frame_queue, processor, config):
             logging.info(f"Writing cptv file %s", f.name)
             from cptvwriter import write_header
 
-            write_header(f, config)
+            write_header(f, config,timestamp)
         byte_data = b""
         if extra_b is not None:
             data = extra_b

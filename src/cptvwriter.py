@@ -26,11 +26,10 @@ COLS = 160
 ROWS = 120
 
 
-def write_header(fileobj, config):
+def write_header(fileobj, config,timestamp):
     timestamp = datetime.now()
 
-    mtime = timestamp.timestamp()
-    s = gzip.GzipFile(fileobj=fileobj, mode="wb", mtime=mtime, compresslevel=1)
+    s = gzip.GzipFile(fileobj=fileobj, mode="wb", mtime=timestamp, compresslevel=1)
 
     s.write(MAGIC)
     s.write(VERSION)
