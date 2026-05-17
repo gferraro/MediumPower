@@ -222,9 +222,8 @@ def medium_power(connection, frame_queue, processor, config):
                 return
             extra_b = None
             continue
-        timestamp = struct.unpack("<q", extra_b[:8])[0]
-        logging.info("Timestamp received is %s",timestamp)
-        extra_b = extra_b[8:]
+
+      
         reader = CptvStreamReader()
         decompressor = zlib.decompressobj(wbits=-zlib.MAX_WBITS)
         recording = False
@@ -233,7 +232,23 @@ def medium_power(connection, frame_queue, processor, config):
         read_header = False
         data = b""
         finished = False
+        
 
+        while len(extra_b)< 8:
+            logging.info("Missing timestamp info waiting for more data")
+            try:
+                byte_data = connection.recv(headers.frame_size)
+                if len(byte_data) == 0:
+                    # disconnected from socket
+                    logging.info("Disconnected from socket")
+                    return
+                extra_b += byte_data
+            except:
+                time.sleep(1)
+                continue  
+        timestamp = struct.unpack("<q", extra_b[:8])[0]
+        logging.info("Timestamp received is %s",timestamp)
+        extra_b = extra_b[8:]
         if WRITE_CPTV:
             f = open(f"/var/spool/cptv/temp/raw{stream_i}-{time.time()}.cptv", "wb")
             logging.info(f"Writing cptv file %s", f.name)
@@ -264,41 +279,42 @@ def medium_power(connection, frame_queue, processor, config):
                 time.sleep(1)
                 continue
 
-            if len(byte_data) > 0:
-                clear_index = byte_data.find(b"clear")
-                if clear_index > -1:
-                    byte_data = byte_data[:clear_index]
 
-                    logging.info("Received clear finished file")
-                    finished = True
-                    frame_queue.put(CLEAR_SIGNAL)
-                    if WRITE_CPTV:
-                        import shutil
-                        from pathlib import Path
 
-                        f.write(byte_data)
-                        f.close()
-                        file_path = Path(f.name)
-                        # move from temp to actual folder
-                        shutil.move(file_path, file_path.parent.parent / file_path.name)
+            clear_index = byte_data.find(b"clear")
+            if clear_index > -1:
+                byte_data = byte_data[:clear_index]
 
-                    # might have another start
-                    extra_b = byte_data[clear_index + len("clear") :]
-                elif byte_data.find(b"abort") > -1:
-                    logging.info("Received abort signal")
-                    finished = True
-                    frame_queue.put(CLEAR_SIGNAL)
-                    if WRITE_CPTV:
-                        f.close()
-                        os.remove(f.name)
-                    break
-                else:
-                    if WRITE_CPTV:
-                        f.write(byte_data)
-                    logging.debug(
-                        "Adding new data %s to old data %s", len(byte_data), len(data)
-                    )
-                data = data + byte_data
+                logging.info("Received clear finished file")
+                finished = True
+                frame_queue.put(CLEAR_SIGNAL)
+                if WRITE_CPTV:
+                    import shutil
+                    from pathlib import Path
+
+                    f.write(byte_data)
+                    f.close()
+                    file_path = Path(f.name)
+                    # move from temp to actual folder
+                    shutil.move(file_path, file_path.parent.parent / file_path.name)
+
+                # might have another start
+                extra_b = byte_data[clear_index + len("clear") :]
+            elif byte_data.find(b"abort") > -1:
+                logging.info("Received abort signal")
+                finished = True
+                frame_queue.put(CLEAR_SIGNAL)
+                if WRITE_CPTV:
+                    f.close()
+                    os.remove(f.name)
+                break
+            else:
+                if WRITE_CPTV:
+                    f.write(byte_data)
+                logging.debug(
+                    "Adding new data %s to old data %s", len(byte_data), len(data)
+                )
+            data = data + byte_data
 
             if len(data) == 0:
                 time.sleep(1)
