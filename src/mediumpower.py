@@ -273,11 +273,16 @@ def medium_power(connection, frame_queue, processor, config):
                     if recording:
                         logging.error("Mid recording failed to receive more data")
                         frame_queue.put(CLEAR_SIGNAL)
+                        f.close()
+                        remove_file(f)
+
                     return
             except:
                 if recording:
                     logging.error("Mid recording failed to receive more data")
                     frame_queue.put(CLEAR_SIGNAL)
+                    f.close()
+                    remove_file(f)
                     break
                 time.sleep(1)
                 continue
@@ -296,7 +301,7 @@ def medium_power(connection, frame_queue, processor, config):
                     f.write(byte_data)
                     f.close()
                     from cptvwriter import write_header
-                    import datetime
+                    from datetime import datetime
                     file_path = Path(f.name)
                     formatted_time = datetime.fromtimestamp(timestamp).strftime("%Y%m%d-%H%M%S.%f")
 
@@ -404,14 +409,15 @@ def combine_file(header_file, frame_file,output_file):
     except:
         logging.error("Failed to combine %s %s",header_file,frame_file,exc_info=True)
    
+    remove_file(header_file)
+    remove_file(frame_file)
+
+def remove_file(file_name):
+    import os
     try:
-        os.remove(header_file)
+        os.remove(file_name)
     except:
-        logging.error("Failed to remove %s",header_file,exc_info=True)
-    try:
-        os.remove(frame_file)
-    except:
-        logging.error("Failed to remove %s",frame_file,exc_info=True)
+        logging.error("Failed to remove %s",file_name,exc_info=True)
 
 import zlib
 import io

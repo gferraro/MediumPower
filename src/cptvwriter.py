@@ -27,7 +27,7 @@ ROWS = 120
 
 
 def write_header(filename, headers,config,timestamp_micros, min_value = 0,max_value=0,num_frames = 0):
-    with gzip.open(filename, 'wb', encoding='utf-8', compresslevel=1) as s:
+    with gzip.open(filename, 'wb', compresslevel=1) as s:
         s.write(MAGIC)
         s.write(VERSION)
 
