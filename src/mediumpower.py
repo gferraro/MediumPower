@@ -509,7 +509,7 @@ class HeaderInfo:
             fps=raw.get(HeaderInfo.FPS),
             brand=raw.get(HeaderInfo.BRAND),
             model=raw.get(HeaderInfo.MODEL),
-            serial=raw.get(HeaderInfo.SERIAL),
+            serial=raw.get(HeaderInfo.SERIAL,0),
             frame_size=raw.get(HeaderInfo.FRAME_SIZE),
             pixel_bits=raw.get(HeaderInfo.PIXEL_BITS),
             firmware=raw.get(HeaderInfo.FIRMWARE),
