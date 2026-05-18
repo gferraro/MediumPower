@@ -404,7 +404,8 @@ def combine_file(header_file, frame_file,output_file):
     import os
     try:
     # Simple cat command to display a file's content
-        result = subprocess.run(['cat',header_file,frame_file, '|','sudo', 'tee','-a',output_file], capture_output=True,check=True)
+        command = f"cat {header_file} {frame_file} >> {str(output_file)}"
+        result = subprocess.run(    ["sudo", "bash", "-c", command],capture_output=True,check=True)
         logging.info("COmbine output %s",result)
     except:
         logging.error("Failed to combine %s %s",header_file,frame_file,exc_info=True)
