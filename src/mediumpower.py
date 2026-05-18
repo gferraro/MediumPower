@@ -250,7 +250,7 @@ def medium_power(connection, frame_queue, processor, config):
                 continue  
         timestamp = struct.unpack("<q", extra_b[:8])[0]
         logging.info("Timestamp received is %s",timestamp)
-        formatted_time = datetime.fromtimestamp(timestamp/1e-6).strftime("%Y%m%d-%H%M%S.%f")
+        formatted_time = datetime.fromtimestamp(timestamp/1e+6).strftime("%Y%m%d-%H%M%S.%f")
 
         extra_b = extra_b[8:]
         if WRITE_CPTV:
@@ -305,7 +305,7 @@ def medium_power(connection, frame_queue, processor, config):
                     from cptvwriter import write_header
                     file_path = Path(f.name)
 
-                    write_header(f"/var/spool/cptv/temp/{formatted_time}-header.gz",config,timestamp, min_value,max_value,frame_i)
+                    write_header(f"/var/spool/cptv/temp/{formatted_time}-header.gz",headers,config,timestamp, min_value,max_value,frame_i)
                     combine_file(f"/var/spool/cptv/temp/{formatted_time}.gz", f.name,file_path.parent.parent / file_path.name)
                     # move from temp to actual folder
                     # shutil.move(file_path, file_path.parent.parent / file_path.name)
