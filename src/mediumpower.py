@@ -236,7 +236,7 @@ def medium_power(connection, frame_queue, processor, config):
         min_value = None
         max_value = None
 
-        while len(extra_b)< 8:
+        while len(extra_b)< 8+4+4:
             logging.info("Missing timestamp info waiting for more data")
             try:
                 byte_data = connection.recv(headers.frame_size)
@@ -249,10 +249,14 @@ def medium_power(connection, frame_queue, processor, config):
                 time.sleep(1)
                 continue  
         timestamp = struct.unpack("<q", extra_b[:8])[0]
-        logging.info("Timestamp received is %s",timestamp)
+        lepton_serial = struct.unpack("<I", extra_b[8:12])[0]
+        firmware = struct.unpack("<I", extra_b[12:16])[0]
+        headers.firmware = firmware
+        headers.lepton_serial = str(lepton_serial)
+        logging.info("Timestamp received is %s serial %s firmware %s",timestamp,lepton_serial,firmware)
         formatted_time = datetime.fromtimestamp(timestamp/1e+6).strftime("%Y%m%d-%H%M%S.%f")
 
-        extra_b = extra_b[8:]
+        extra_b = extra_b[8+4+4:]
         if WRITE_CPTV:
             # write header and cptv file seperately and then concat later
             # this way can write header with total frames and min max value
@@ -406,7 +410,7 @@ def combine_file(header_file, frame_file,output_file):
     # Simple cat command to display a file's content
         command = f"cat {header_file} {frame_file} >> {str(output_file)}"
         result = subprocess.run(    ["sudo", "bash", "-c", command],capture_output=True,check=True)
-        logging.info("COmbine output %s",result)
+        # logging.info("Combine output %s",result)
     except:
         logging.error("Failed to combine %s %s",header_file,frame_file,exc_info=True)
    
