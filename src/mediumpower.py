@@ -306,7 +306,7 @@ def medium_power(connection, frame_queue, processor, config):
                     file_path = Path(f.name)
 
                     write_header(f"/var/spool/cptv/temp/{formatted_time}-header.gz",headers,config,timestamp, min_value,max_value,frame_i)
-                    combine_file(f"/var/spool/cptv/temp/{formatted_time}.gz", f.name,file_path.parent.parent / file_path.name)
+                    combine_file(f"/var/spool/cptv/temp/{formatted_time}-header.gz", f.name,file_path.parent.parent / file_path.name)
                     # move from temp to actual folder
                     # shutil.move(file_path, file_path.parent.parent / file_path.name)
 
@@ -404,7 +404,7 @@ def combine_file(header_file, frame_file,output_file):
     import os
     try:
     # Simple cat command to display a file's content
-        result = subprocess.run(['cat',header_file,frame_file, '>>',output_file], capture_output=True,check=True)
+        result = subprocess.run(['cat',header_file,frame_file, '|','sudo', 'tee','-a',output_file], capture_output=True,check=True)
         logging.info("COmbine output %s",result)
     except:
         logging.error("Failed to combine %s %s",header_file,frame_file,exc_info=True)
