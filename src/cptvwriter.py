@@ -26,28 +26,38 @@ COLS = 160
 ROWS = 120
 
 
-def write_header(fileobj, config,timestamp_micros):
-    s = gzip.GzipFile(fileobj=fileobj, mode="wb",  compresslevel=1)
-
-    s.write(MAGIC)
-    s.write(VERSION)
-
-    fw = FieldWriter()
-    fw.uint8(ord(Field.COMPRESSION), 1)
-    fw.uint32(ord(Field.X_RESOLUTION), COLS)
-    fw.uint32(ord(Field.Y_RESOLUTION), ROWS)
-
-    # fw.string(ord(Field.DEVICENAME), config.device.name)
-    fw.uint32(ord(Field.DEVICEID), config.device.device_id)
-
-    fw.float32(ord(Field.LATITUDE), config.location.latitude)
-    fw.float32(ord(Field.LONGITUDE), config.location.longitude)
-    fw.timestamp(ord(Field.TIMESTAMP), timestamp_micros)
-    fw.string(ord(Field.MODEL), b"lepton3.5")
-    fw.string(ord(Field.BRAND), b"flir")
-    fw.write(ord(Section.HEADER), s)
+def write_header(filename, headers,config,timestamp_micros, min_value = 0,max_value=0,num_frames = 0):
+    with gzip.open(filename, 'wb', encoding='utf-8', compresslevel=1) as s:
+        s.write(MAGIC)
+        s.write(VERSION)
 
 
+        fw = FieldWriter()
+        fw.uint16(ord(Field.MIN_VALUE), min_value)
+        fw.uint16(ord(Field.MAX_VALUE), max_value)
+        fw.uint16(ord(Field.NUM_FRAMES), num_frames)
+
+
+        fw.uint8(ord(Field.COMPRESSION), 1)
+        fw.uint32(ord(Field.X_RESOLUTION), COLS)
+        fw.uint32(ord(Field.Y_RESOLUTION), ROWS)
+
+        fw.uint32(ord(Field.DEVICEID), config.device.device_id)
+        fw.timestamp(ord(Field.TIMESTAMP), timestamp_micros)
+        fw.string(ord(Field.MODEL), headers.model.encode())
+        fw.string(ord(Field.BRAND),headers.brand.encode())
+        fw.string(ord(Field.CAMERA_SERIAL,headers.serial.encode()))
+        fw.string(ord(Field.FIRMWARE),headers.brand.encode())
+        if config.location.latitude > 0:
+            fw.float32(ord(Field.LATITUDE), config.location.latitude)
+        if config.location.longitude > 0:
+            fw.float32(ord(Field.LONGITUDE), config.location.longitude)
+        if config.location.altitude:
+            fw.float32(ord(Field.ALTITUDE), config.location.altitude)
+        if config.location.accuracy:
+            fw.float32(ord(Field.ACCURACY), config.location.accuracy)
+        fw.write(ord(Section.HEADER), s)
+    
 class FieldWriter:
     def __init__(self):
         self.s = BytesIO()
@@ -62,6 +72,11 @@ class FieldWriter:
 
     def uint8(self, code, val):
         self.s.write(struct.pack("<BBB", 1, code, val))
+        self.count += 1
+
+        
+    def uint16(self, code, val):
+        self.s.write(struct.pack("<BBH", 2, code, int(val)))
         self.count += 1
 
     def uint32(self, code, val):
@@ -119,6 +134,10 @@ class Field:
 
     TEMP_C = b"a"
     LAST_FFC_TEMP_C = b"b"
+
+    MIN_VALUE = b"Q"
+    MAX_VALUE = b"K"
+    NUM_FRAMES = b'J'
 
 
 TIMESTAMP_FIELDS = {Field.TIMESTAMP, Field.LOC_TIMESTAMP}

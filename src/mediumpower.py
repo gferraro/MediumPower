@@ -232,7 +232,8 @@ def medium_power(connection, frame_queue, processor, config):
         read_header = False
         data = b""
         finished = False
-        
+        min_value = None
+        max_value = None
 
         while len(extra_b)< 8:
             logging.info("Missing timestamp info waiting for more data")
@@ -250,11 +251,12 @@ def medium_power(connection, frame_queue, processor, config):
         logging.info("Timestamp received is %s",timestamp)
         extra_b = extra_b[8:]
         if WRITE_CPTV:
+            # write header and cptv file seperately and then concat later
+            # this way can write header with total frames and min max value
             f = open(f"/var/spool/cptv/temp/raw{stream_i}-{time.time()}.cptv", "wb")
             logging.info(f"Writing cptv file %s", f.name)
-            from cptvwriter import write_header
-
-            write_header(f, config,timestamp)
+            # from cptvwriter import write_header
+            # write_header(f"/var/spool/cptv/temp/raw{stream_i}-{time.time()}-header.gz",headers, config,timestamp)
         byte_data = b""
         if extra_b is not None:
             data = extra_b
@@ -289,14 +291,16 @@ def medium_power(connection, frame_queue, processor, config):
                 finished = True
                 frame_queue.put(CLEAR_SIGNAL)
                 if WRITE_CPTV:
-                    import shutil
                     from pathlib import Path
-
                     f.write(byte_data)
                     f.close()
+                    from cptvwriter import write_header
                     file_path = Path(f.name)
+
+                    write_header(f"/var/spool/cptv/temp/raw{stream_i}-{time.time()}-header.gz",config,timestamp, min_value,max_value,frame_i)
+                    combine_file(f"/var/spool/cptv/temp/raw{stream_i}-{time.time()}-header.gz", f"/var/spool/cptv/temp/raw{stream_i}-{time.time()}.cptv",file_path.parent.parent / file_path.name)
                     # move from temp to actual folder
-                    shutil.move(file_path, file_path.parent.parent / file_path.name)
+                    # shutil.move(file_path, file_path.parent.parent / file_path.name)
 
                 # might have another start
                 extra_b = byte_data[clear_index + len("clear") :]
@@ -357,6 +361,15 @@ def medium_power(connection, frame_queue, processor, config):
                         frame.temp_c,
                         frame.last_ffc_temp_c,
                     )
+                    frame_min = np.amin(py_frame.pix)
+                    frame_max = np.amax(py_frame.pix)
+
+                    if min_value is None or frame_min < min_value:
+                        min_value = frame_min
+                    if max_value is None or max_value > frame_max:
+                        max_value = frame_max
+                    
+
                     frame_queue.put((py_frame, time.time()))
                     frame_i += 1
 
@@ -376,6 +389,26 @@ def medium_power(connection, frame_queue, processor, config):
         reader = None
         asked_to_stay_on = ask_to_stay_on()
 
+
+
+def combine_file(header_file, frame_file,output_file):
+    import subprocess
+    import os
+    try:
+    # Simple cat command to display a file's content
+        result = subprocess.run(['cat',header_file,frame_file, '>>',output_file], capture_output=True,check=True)
+        logging.info("COmbine output %s",result)
+    except:
+        logging.error("Failed to combine %s %s",header_file,frame_file,exc_info=True)
+   
+    try:
+        os.remove(header_file)
+    except:
+        logging.error("Failed to remove %s",header_file,exc_info=True)
+    try:
+        os.remove(frame_file)
+    except:
+        logging.error("Failed to remove %s",frame_file,exc_info=True)
 
 import zlib
 import io
