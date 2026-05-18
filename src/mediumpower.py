@@ -189,6 +189,7 @@ def medium_power(connection, frame_queue, processor, config):
     import zlib
     import numpy as np
     from cptv import Frame
+    from datetime import datetime
 
     headers, extra_b = handle_headers(connection)
     stream_i = 0
@@ -301,7 +302,6 @@ def medium_power(connection, frame_queue, processor, config):
                     f.write(byte_data)
                     f.close()
                     from cptvwriter import write_header
-                    from datetime import datetime
                     file_path = Path(f.name)
                     formatted_time = datetime.fromtimestamp(timestamp).strftime("%Y%m%d-%H%M%S.%f")
 
