@@ -253,7 +253,8 @@ def medium_power(connection, frame_queue, processor, config):
         if WRITE_CPTV:
             # write header and cptv file seperately and then concat later
             # this way can write header with total frames and min max value
-            f = open(f"/var/spool/cptv/temp/raw{stream_i}-{time.time()}.cptv", "wb")
+            formatted_time = datetime.fromtimestamp(timestamp).strftime("%Y%m%d-%H%M%S.%f")
+            f = open(f"/var/spool/cptv/temp/{formatted_time}.cptv", "wb")
             logging.info(f"Writing cptv file %s", f.name)
             # from cptvwriter import write_header
             # write_header(f"/var/spool/cptv/temp/raw{stream_i}-{time.time()}-header.gz",headers, config,timestamp)
@@ -295,10 +296,12 @@ def medium_power(connection, frame_queue, processor, config):
                     f.write(byte_data)
                     f.close()
                     from cptvwriter import write_header
+                    import datetime
                     file_path = Path(f.name)
+                    formatted_time = datetime.fromtimestamp(timestamp).strftime("%Y%m%d-%H%M%S.%f")
 
-                    write_header(f"/var/spool/cptv/temp/raw{stream_i}-{time.time()}-header.gz",config,timestamp, min_value,max_value,frame_i)
-                    combine_file(f"/var/spool/cptv/temp/raw{stream_i}-{time.time()}-header.gz", f"/var/spool/cptv/temp/raw{stream_i}-{time.time()}.cptv",file_path.parent.parent / file_path.name)
+                    write_header(f"/var/spool/cptv/temp/{formatted_time}-header.gz",config,timestamp, min_value,max_value,frame_i)
+                    combine_file(f"/var/spool/cptv/temp/{formatted_time}.gz", f.name,file_path.parent.parent / file_path.name)
                     # move from temp to actual folder
                     # shutil.move(file_path, file_path.parent.parent / file_path.name)
 
