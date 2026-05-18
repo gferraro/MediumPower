@@ -251,8 +251,8 @@ def medium_power(connection, frame_queue, processor, config):
         timestamp = struct.unpack("<q", extra_b[:8])[0]
         lepton_serial = struct.unpack("<I", extra_b[8:12])[0]
         firmware = struct.unpack("<I", extra_b[12:16])[0]
-        headers.firmware = firmware
-        headers.lepton_serial = str(lepton_serial)
+        headers.firmware =f"DOC-AI-v0.{firmware}"
+        headers.serial = str(lepton_serial)
         logging.info("Timestamp received is %s serial %s firmware %s",timestamp,lepton_serial,firmware)
         formatted_time = datetime.fromtimestamp(timestamp/1e+6).strftime("%Y%m%d-%H%M%S.%f")
 
