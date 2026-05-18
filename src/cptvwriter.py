@@ -46,7 +46,9 @@ def write_header(filename, headers,config,timestamp_micros, min_value = 0,max_va
         fw.timestamp(ord(Field.TIMESTAMP), timestamp_micros)
         fw.string(ord(Field.MODEL), headers.model.encode())
         fw.string(ord(Field.BRAND),headers.brand.encode())
-        fw.uint32(ord(Field.CAMERA_SERIAL),headers.serial)
+        if headers.serial:
+            # sometimes sent as None
+            fw.uint32(ord(Field.CAMERA_SERIAL),headers.serial)
         fw.string(ord(Field.FIRMWARE),headers.firmware.encode())
         if config.location.latitude != 0:
             fw.float32(ord(Field.LATITUDE), config.location.latitude)
