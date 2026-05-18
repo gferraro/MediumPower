@@ -48,9 +48,9 @@ def write_header(filename, headers,config,timestamp_micros, min_value = 0,max_va
         fw.string(ord(Field.BRAND),headers.brand.encode())
         fw.uint32(ord(Field.CAMERA_SERIAL),headers.serial)
         fw.string(ord(Field.FIRMWARE),headers.brand.encode())
-        if config.location.latitude > 0:
+        if config.location.latitude != 0:
             fw.float32(ord(Field.LATITUDE), config.location.latitude)
-        if config.location.longitude > 0:
+        if config.location.longitude != 0:
             fw.float32(ord(Field.LONGITUDE), config.location.longitude)
         if config.location.altitude:
             fw.float32(ord(Field.ALTITUDE), config.location.altitude)
