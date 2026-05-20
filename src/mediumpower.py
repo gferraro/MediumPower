@@ -280,7 +280,7 @@ def medium_power(connection, frame_queue, processor, config):
                         logging.error("Mid recording failed to receive more data")
                         frame_queue.put(CLEAR_SIGNAL)
                         f.close()
-                        remove_file(f)
+                        remove_file(f.name)
 
                     return
             except:
@@ -288,7 +288,7 @@ def medium_power(connection, frame_queue, processor, config):
                     logging.error("Mid recording failed to receive more data")
                     frame_queue.put(CLEAR_SIGNAL)
                     f.close()
-                    remove_file(f)
+                    remove_file(f.name)
                     break
                 time.sleep(1)
                 continue
